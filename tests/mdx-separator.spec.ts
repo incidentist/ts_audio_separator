@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -63,7 +63,10 @@ test.describe('MDX Separator Integration Tests', () => {
           logLevel: 'debug',
           sampleRate: 44100,
           normalizationThreshold: 0.9,
-          amplificationThreshold: 0.6
+          amplificationThreshold: 0.6,
+          outputDir: 'output',
+          primaryStemName: 'vocals',
+          secondaryStemName: 'instrumental'
         },
         {
           segmentSize: 256,
@@ -94,29 +97,84 @@ test.describe('MDX Separator Integration Tests', () => {
         separateError = error.message;
       }
 
+      // Check if output blobs were created
+      const outputBlobs = (window as any).outputBlobs || {};
+      const blobUrls = Object.keys(outputBlobs);
+
+      // Collect blob information without converting to base64
+      const blobsInfo: any[] = [];
+      for (const [path, data] of Object.entries(outputBlobs)) {
+        const blobData = data as any;
+        blobsInfo.push({
+          path,
+          name: blobData.name,
+          size: blobData.size,
+          url: blobData.url
+        });
+      }
+
       return {
         modelLoaded: true,
         separateError,
         separateResult,
-        success: !separateError
+        success: !separateError,
+        outputBlobCount: blobUrls.length,
+        outputBlobUrls: blobUrls,
+        blobsInfo
       };
     });
 
     console.log('\n=== MDX Separator Real Audio Test Results ===\n');
     console.log('Model loaded:', result.modelLoaded);
     console.log('Separation successful:', result.success);
+    console.log('Output files created:', result.outputBlobCount);
 
     if (result.separateError) {
       console.log('Error:', result.separateError);
     }
 
     if (result.separateResult) {
-      console.log('Output files:', result.separateResult);
+      console.log('Output URLs:', result.separateResult);
+    }
+
+    // Download and save the separated audio files
+    if (result.blobsInfo && result.blobsInfo.length > 0) {
+      const outputDir = join(__dirname, 'output');
+      if (!existsSync(outputDir)) {
+        mkdirSync(outputDir, { recursive: true });
+      }
+
+      for (const blobInfo of result.blobsInfo) {
+        console.log(`Blob info: ${blobInfo.name} (${blobInfo.size} bytes) at ${blobInfo.url}`);
+
+        // Trigger download programmatically and save to output directory
+        const downloadPromise = page.waitForEvent('download');
+
+        // Trigger download by creating a temporary link and clicking it
+        await page.evaluate((url) => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'download.wav';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }, blobInfo.url);
+
+        try {
+          const download = await downloadPromise;
+          const outputPath = join(outputDir, `${blobInfo.name}.wav`);
+          await download.saveAs(outputPath);
+          console.log(`Saved ${blobInfo.name} to ${outputPath}`);
+        } catch (error) {
+          console.error(`Error downloading ${blobInfo.name}:`, error);
+        }
+      }
     }
 
     // Assertions
     expect(result.modelLoaded).toBe(true);
     expect(result.separateError).toBeNull();
     expect(result.success).toBe(true);
+    expect(result.outputBlobCount).toBe(2); // Should create 2 output files (vocals and instrumental)
   });
 });

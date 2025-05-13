@@ -170,8 +170,50 @@ export class MDXSeparator extends CommonSeparator {
     const outputFiles: string[] = [];
     this.debug('Processing output files...');
 
-    // TODO: Implement the rest of the separation logic
-    // For now, just return empty array
+    // Normalize and process the primary source if it's not already an array
+    if (!this.primarySource) {
+      this.debug('Normalizing primary source...');
+      this.primarySource = this.normalize(source, this.normalizationThreshold, this.amplificationThreshold);
+    }
+
+    // Process the secondary source if not already an array
+    if (!this.secondarySource) {
+      this.debug('Producing secondary source: demixing in match_mix mode');
+      const rawMix = await this.demix(normalizedMix, true);
+
+      if (this.invertUsingSpec) {
+        this.debug('Inverting secondary stem using spectogram as invertUsingSpec is set to true');
+        // For spectral inversion, we'd need to implement this method
+        // For now, use simple subtraction
+        this.secondarySource = this.subtractChannels(normalizedMix, source);
+      } else {
+        this.debug('Inverting secondary stem by subtracting demixed stem from original mix');
+        this.secondarySource = this.subtractChannels(normalizedMix, source);
+      }
+    }
+
+    // Save and process the secondary stem if needed
+    if (!this.outputSingleStem || this.outputSingleStem.toLowerCase() === this.secondaryStemName.toLowerCase()) {
+      const secondaryPath = this.getStemOutputPath(this.secondaryStemName, customOutputNames);
+
+      this.info(`Saving ${this.secondaryStemName} stem to ${secondaryPath}...`);
+      const secondaryUrl = await this.saveAudioOutput(secondaryPath, this.secondarySource!, this.secondaryStemName);
+      outputFiles.push(secondaryUrl);
+    }
+
+    // Save and process the primary stem if needed
+    if (!this.outputSingleStem || this.outputSingleStem.toLowerCase() === this.primaryStemName.toLowerCase()) {
+      const primaryPath = this.getStemOutputPath(this.primaryStemName, customOutputNames);
+
+      if (!this.primarySource) {
+        this.primarySource = source;
+      }
+
+      this.info(`Saving ${this.primaryStemName} stem to ${primaryPath}...`);
+      const primaryUrl = await this.saveAudioOutput(primaryPath, this.primarySource, this.primaryStemName);
+      outputFiles.push(primaryUrl);
+    }
+
     return outputFiles;
   }
 
@@ -191,51 +233,148 @@ export class MDXSeparator extends CommonSeparator {
     this.debug(`Starting demixing process with isMatchMix: ${isMatchMix}...`);
     this.initializeModelSettings();
 
-    // Preserve the original mix for later use
+    // Preserves the original mix for later use
     const orgMix = mix;
     this.debug(`Original mix stored. Shape: ${mix.length}x${mix[0].length}`);
 
-    // Initialize mix for processing
-    const [mixWaves, pad] = this.initializeMix(mix);
+    // Initializes a list to store the separated waveforms
+    const tarWaves_: Float32Array[][] = [];
 
-    // Process chunks
-    const processedChunks: Float32Array[][] = [];
+    // Handling different chunk sizes and overlaps based on the matching requirement
+    let chunkSize: number;
+    let overlap: number;
 
-    // Process each chunk (stereo pairs)
-    for (let i = 0; i < mixWaves.length; i += 2) {
-      const chunk = [mixWaves[i], mixWaves[i + 1]];
-      const processed = await this.runModel(chunk, isMatchMix);
-      processedChunks.push(processed);
+    if (isMatchMix) {
+      // Sets a smaller chunk size specifically for matching the mix
+      chunkSize = this.hopLength * (this.segmentSize - 1);
+      // Sets a small overlap for the chunks
+      overlap = 0.02;
+      this.debug(`Chunk size for matching mix: ${chunkSize}, Overlap: ${overlap}`);
+    } else {
+      // Uses the regular chunk size defined in model settings
+      chunkSize = this.chunkSize;
+      // Uses the overlap specified in the model settings
+      overlap = this.overlap;
+      this.debug(`Standard chunk size: ${chunkSize}, Overlap: ${overlap}`);
     }
 
-    // Combine processed chunks back into a single audio signal
-    const combinedChannels: Float32Array[] = [
-      new Float32Array(mix[0].length),
-      new Float32Array(mix[1].length)
+    // Calculate the generated size after subtracting the trim from both ends of the chunk
+    const genSize = chunkSize - 2 * this.trim;
+    this.debug(`Generated size calculated: ${genSize}`);
+
+    // Calculate padding to make the mix length a multiple of the generated size
+    const pad = genSize + this.trim - ((mix[0].length) % genSize);
+
+    // Prepare the mixture with padding at the beginning and the end
+    const mixture = mix.map(channel => {
+      const padded = new Float32Array(this.trim + channel.length + pad);
+      padded.set(channel, this.trim);
+      return padded;
+    });
+    this.debug(`Mixture prepared with padding. Mixture shape: ${mixture[0].length}`);
+
+    // Calculate the step size for processing chunks based on the overlap
+    const step = Math.floor((1 - overlap) * chunkSize);
+    this.debug(`Step size for processing chunks: ${step} as overlap is set to ${overlap}.`);
+
+    // Initialize arrays to store the results and to account for overlap
+    const result = [
+      new Float32Array(mixture[0].length),
+      new Float32Array(mixture[1].length)
+    ];
+    const divider = [
+      new Float32Array(mixture[0].length),
+      new Float32Array(mixture[1].length)
     ];
 
-    let currentSample = 0;
-    for (const chunk of processedChunks) {
+    // Initialize counters for processing chunks
+    let total = 0;
+    const totalLength = mixture[0].length;
+    const totalChunks = Math.ceil((totalLength - chunkSize) / step) + 1;
+    this.debug(`Total chunks to process: ${totalChunks}`);
+
+    // Process each chunk of the mixture
+    for (let i = 0; i < totalLength; i += step) {
+      total++;
+      const start = i;
+      const end = Math.min(i + chunkSize, totalLength);
+      this.debug(`Processing chunk ${total}/${totalChunks}: Start ${start}, End ${end}`);
+
+      // Handle windowing for overlapping chunks
+      const chunkSizeActual = end - start;
+      let window: Float32Array | null = null;
+
+      if (overlap !== 0) {
+        window = new Float32Array(chunkSizeActual);
+        for (let j = 0; j < chunkSizeActual; j++) {
+          window[j] = 0.5 - 0.5 * Math.cos(2 * Math.PI * j / (chunkSizeActual - 1));
+        }
+        this.debug('Window applied to the chunk.');
+      }
+
+      // Zero-pad the chunk to prepare it for processing
+      const mixPart = mixture.map(channel => {
+        const chunk = channel.slice(start, end);
+        if (end !== i + chunkSize) {
+          const paddedChunk = new Float32Array(chunkSize);
+          paddedChunk.set(chunk);
+          return paddedChunk;
+        }
+        return chunk;
+      });
+
+      // Run the model to separate the sources
+      const tarWaves = await this.runModel(mixPart, isMatchMix);
+
+      // Apply windowing if needed and accumulate the results
       for (let ch = 0; ch < 2; ch++) {
-        for (let s = 0; s < chunk[ch].length && currentSample + s < mix[ch].length; s++) {
-          combinedChannels[ch][currentSample + s] = chunk[ch][s];
+        for (let s = 0; s < chunkSizeActual; s++) {
+          if (window !== null) {
+            tarWaves[ch][s] *= window[s];
+            divider[ch][start + s] += window[s];
+          } else {
+            divider[ch][start + s] += 1;
+          }
+          result[ch][start + s] += tarWaves[ch][s];
         }
       }
-      currentSample += this.genSize;
     }
 
-    // Apply compensation if not matching mix
+    // Normalize the results by the divider to account for overlap
+    this.debug('Normalizing result by dividing result by divider.');
+    const tarWaves = result.map((channel, ch) => {
+      const normalized = new Float32Array(channel.length);
+      for (let i = 0; i < channel.length; i++) {
+        normalized[i] = divider[ch][i] !== 0 ? channel[i] / divider[ch][i] : 0;
+      }
+      return normalized;
+    });
+
+    tarWaves_.push(tarWaves);
+
+    // Reshape the results to match the original dimensions
+    const tarWavesFlat = tarWaves_.map(batch => {
+      return batch.map(channel =>
+        channel.slice(this.trim, this.trim + mix[0].length)
+      );
+    })[0]; // We only have one batch in this implementation
+
+    // Extract the source from the results
+    const source = tarWavesFlat;
+    this.debug(`Concatenated tar_waves. Shape: ${source.length}x${source[0].length}`);
+
+    // Apply compensation if not matching the mix
     if (!isMatchMix) {
-      for (let ch = 0; ch < combinedChannels.length; ch++) {
-        for (let s = 0; s < combinedChannels[ch].length; s++) {
-          combinedChannels[ch][s] *= this.compensate;
+      for (let ch = 0; ch < source.length; ch++) {
+        for (let i = 0; i < source[ch].length; i++) {
+          source[ch][i] *= this.compensate;
         }
       }
       this.debug('Match mix mode; compensate multiplier applied.');
     }
 
     this.debug('Demixing process completed.');
-    return combinedChannels;
+    return source;
   }
 
   /**
@@ -392,84 +531,57 @@ export class MDXSeparator extends CommonSeparator {
     return result;
   }
 
-  private initializeMix(mix: Float32Array[], isCheckpoint: boolean = false): [Float32Array[], number] {
-    this.debug(`Initializing mix with isCheckpoint=${isCheckpoint}. Initial mix shape: ${mix.length}x${mix[0].length}`);
+  /**
+   * Subtract one set of channels from another
+   */
+  private subtractChannels(mix: Float32Array[], source: Float32Array[]): Float32Array[] {
+    const result: Float32Array[] = [];
 
-    // Ensure the mix is a 2-channel (stereo) audio signal
-    if (mix.length !== 2) {
-      const errorMessage = `Expected a 2-channel audio signal, but got ${mix.length} channels`;
-      this.error(errorMessage);
-      throw new Error(errorMessage);
+    for (let ch = 0; ch < mix.length; ch++) {
+      const channel = new Float32Array(mix[ch].length);
+      for (let i = 0; i < channel.length; i++) {
+        channel[i] = mix[ch][i] - source[ch][i];
+      }
+      result.push(channel);
     }
 
-    let mixWaves: Float32Array[] = [];
-    let pad = 0;
+    return result;
+  }
 
-    if (isCheckpoint) {
-      this.debug('Processing in checkpoint mode...');
-      // Calculate padding based on the generation size and trim
-      pad = this.genSize + this.trim - (mix[0].length % this.genSize);
-      this.debug(`Padding calculated: ${pad}`);
+  /**
+   * Save audio output to a file (in browser, creates a blob URL)
+   */
+  private async saveAudioOutput(outputPath: string, audioData: Float32Array[], stemName: string): Promise<string> {
+    // Since we're running in a browser, we can't actually save to the filesystem
+    // Instead, we'll create a blob and return a downloadable URL
 
-      // Add padding at the beginning and the end of the mix
-      const paddedMix = mix.map(channel => {
-        const padded = new Float32Array(this.trim + channel.length + pad);
-        padded.set(channel, this.trim);
-        return padded;
-      });
+    try {
+      // Create a WAV blob
+      const blob = await AudioUtils.saveAudioFile(audioData, this.sampleRate, outputPath);
 
-      // Determine the number of chunks based on the mixture's length
-      const numChunks = Math.floor(paddedMix[0].length / this.genSize);
-      this.debug(`Mixture shape after padding: ${paddedMix[0].length}, Number of chunks: ${numChunks}`);
+      // Create a blob URL
+      const blobUrl = URL.createObjectURL(blob);
 
-      // Split the mixture into chunks
-      for (let i = 0; i < numChunks; i++) {
-        const chunk = paddedMix.map(channel =>
-          channel.slice(i * this.genSize, i * this.genSize + this.chunkSize)
-        );
-        mixWaves.push(...chunk);
+      this.info(`Created ${stemName} output blob: ${blob.size} bytes`);
+
+      // Store the blob and URL for later access
+      if (typeof window !== 'undefined') {
+        (window as any).outputBlobs = (window as any).outputBlobs || {};
+        (window as any).outputBlobs[outputPath] = {
+          url: blobUrl,
+          blob: blob,
+          name: stemName,
+          size: blob.size
+        };
       }
-    } else {
-      // If not in checkpoint mode, process normally
-      this.debug('Processing in non-checkpoint mode...');
-      const nSample = mix[0].length;
 
-      // Calculate necessary padding to make the total length divisible by the generation size
-      pad = this.genSize - nSample % this.genSize;
-      this.debug(`Number of samples: ${nSample}, Padding calculated: ${pad}`);
+      return blobUrl;
 
-      // Apply padding to the mix
-      const mixP = mix.map(channel => {
-        const padded = new Float32Array(this.trim + channel.length + pad + this.trim);
-        padded.set(channel, this.trim);
-        return padded;
-      });
-      this.debug(`Shape of mix after padding: ${mixP[0].length}`);
-
-      // Process the mix in chunks
-      let i = 0;
-      while (i < nSample + pad) {
-        // Create a chunk that will produce exactly segmentSize frames
-        const chunkStart = i;
-        const chunkEnd = i + this.chunkSize;
-
-        const waves = mixP.map(channel => {
-          const chunk = new Float32Array(this.chunkSize);
-          const sourceEnd = Math.min(chunkEnd, channel.length);
-          const copyLength = sourceEnd - chunkStart;
-          if (copyLength > 0) {
-            chunk.set(channel.slice(chunkStart, sourceEnd));
-          }
-          return chunk;
-        });
-
-        mixWaves.push(...waves);
-        this.debug(`Processed chunk ${mixWaves.length}: Start ${i}, End ${i + this.chunkSize}`);
-        i += this.genSize;
-      }
+    } catch (error) {
+      this.error(`Error saving ${stemName} output: ${error}`);
+      throw error;
     }
-
-    this.debug(`Converted mix to chunks. Total chunks: ${mixWaves.length}`);
-    return [mixWaves, pad];
   }
 }
+
+export { MDXArchConfig };

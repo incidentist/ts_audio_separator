@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MDX Separator Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      max-width: 800px;
+    }
+    .audio-container {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+    .error {
+      color: #f00;
+    }
+    .success {
+      color: #0a0;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px 20px;
+      margin: 10px 0;
+      cursor: pointer;
+    }
+    audio {
+      width: 100%;
+      margin: 10px 0;
+    }
+    #log {
+      background: #f5f5f5;
+      padding: 10px;
+      margin: 20px 0;
+      border-radius: 5px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 12px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>MDX Separator Test</h1>
+
+  <button id="startTest">Start Separation Test</button>
+
+  <div id="status" class="loading">Ready to start test</div>
+
+  <div id="log"></div>
+
+  <div id="results" style="display: none;">
+    <h2>Separated Audio Tracks</h2>
+
+    <div class="audio-container">
+      <h3>Original Audio</h3>
+      <audio id="originalAudio" controls></audio>
+    </div>
+
+    <div class="audio-container">
+      <h3>Vocals</h3>
+      <audio id="vocalsAudio" controls></audio>
+      <button id="downloadVocals">Download Vocals</button>
+    </div>
+
+    <div class="audio-container">
+      <h3>Instrumental</h3>
+      <audio id="instrumentalAudio" controls></audio>
+      <button id="downloadInstrumental">Download Instrumental</button>
+    </div>
+  </div>
+
+  <script type="module">
+    const logElement = document.getElementById('log');
+    const statusElement = document.getElementById('status');
+
+    function log(message) {
+      const time = new Date().toLocaleTimeString();
+      logElement.innerHTML += `${time}: ${message}<br>`;
+      logElement.scrollTop = logElement.scrollHeight;
+      console.log(message);
+    }
+
+    function updateStatus(message, className = '') {
+      statusElement.textContent = message;
+      statusElement.className = className;
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('startTest').addEventListener('click', async () => {
+      try {
+        updateStatus('Loading WebDemix2...', 'loading');
+        log('Starting separation test...');
+
+        // Wait for library to load
+        while (!window.WebDemix2) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        log('WebDemix2 loaded successfully');
+        const { MDXSeparator } = window.WebDemix2;
+
+        // Model configuration
+        const modelData = {
+          compensate: 1.0,
+          mdx_dim_f_set: 2048,
+          mdx_dim_t_set: 8,
+          mdx_n_fft_scale_set: 5120
+        };
+
+        // Create separator instance
+        const separator = new MDXSeparator(
+          {
+            modelPath: 'UVR_MDXNET_KARA_2.onnx',
+            modelName: 'UVR_MDXNET_KARA_2',
+            modelData: modelData,
+            logLevel: 'debug',
+            sampleRate: 44100,
+            normalizationThreshold: 0.9,
+            amplificationThreshold: 0.6,
+            outputDir: 'output',
+            primaryStemName: 'vocals',
+            secondaryStemName: 'instrumental'
+          },
+          {
+            segmentSize: 256,
+            overlap: 0.25,
+            batchSize: 1,
+            hopLength: 1024,
+            enableDenoise: false
+          }
+        );
+
+        // Load model
+        updateStatus('Loading model...', 'loading');
+        log('Loading ONNX model...');
+        await separator.loadModel();
+        log('Model loaded successfully');
+
+        // Load test audio file
+        const audioUrl = '/tests/fixtures/test-audio.wav';
+        updateStatus('Loading audio file...', 'loading');
+        log(`Loading audio file: ${audioUrl}`);
+
+        // Show original audio
+        document.getElementById('originalAudio').src = audioUrl;
+
+        // Perform separation
+        updateStatus('Separating audio (this may take a while)...', 'loading');
+        log('Starting audio separation...');
+        const outputUrls = await separator.separate(audioUrl);
+        log(`Separation completed. Output URLs: ${outputUrls.join(', ')}`);
+
+        // Get the output blobs
+        const outputBlobs = window.outputBlobs || {};
+        log(`Created ${Object.keys(outputBlobs).length} output blobs`);
+
+        // Display results
+        let vocalsData = null;
+        let instrumentalData = null;
+
+        for (const [path, data] of Object.entries(outputBlobs)) {
+          if (data.name === 'vocals') {
+            vocalsData = data;
+            document.getElementById('vocalsAudio').src = data.url;
+            log(`Vocals audio ready: ${path}`);
+          } else if (data.name === 'instrumental') {
+            instrumentalData = data;
+            document.getElementById('instrumentalAudio').src = data.url;
+            log(`Instrumental audio ready: ${path}`);
+          }
+        }
+
+        // Set up download buttons
+        document.getElementById('downloadVocals').addEventListener('click', async () => {
+          if (vocalsData) {
+            downloadBlob(vocalsData.blob, 'vocals.wav');
+          }
+        });
+
+        document.getElementById('downloadInstrumental').addEventListener('click', async () => {
+          if (instrumentalData) {
+            downloadBlob(instrumentalData.blob, 'instrumental.wav');
+          }
+        });
+
+        // Show results
+        document.getElementById('results').style.display = 'block';
+        updateStatus('Separation completed successfully!', 'success');
+
+      } catch (error) {
+        log(`Error: ${error.message}`);
+        updateStatus(`Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    });
+  </script>
+
+  <script src="/src/index.ts" type="module"></script>
+</body>
+</html>
