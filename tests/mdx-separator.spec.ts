@@ -100,6 +100,15 @@ test.describe('MDX Separator Integration Tests', () => {
       // @ts-ignore - This will be available in the browser context
       const { MDXSeparator } = window.WebDemix2;
 
+      const fromTuul = {
+        "hash": "1d64a6d2c30f709b8c9b4ce1366d96ee",
+        "mdx_dim_f_set": 2048,
+        "mdx_dim_t_set": 8,
+        "mdx_n_fft_scale_set": 5120,
+        "primary_stem": "Instrumental",
+        "is_karaoke": true
+      };
+
       // Configure the separator
       const separator = new MDXSeparator(
         {
@@ -107,9 +116,9 @@ test.describe('MDX Separator Integration Tests', () => {
           modelName: 'UVR_MDXNET_KARA_2',
           modelData: {
             compensate: 1.0,
-            mdx_dim_f_set: 3072,
+            mdx_dim_f_set: 2048,
             mdx_dim_t_set: 8,
-            mdx_n_fft_scale_set: 7680
+            mdx_n_fft_scale_set: 5120
           },
           logLevel: 'debug'
         },
