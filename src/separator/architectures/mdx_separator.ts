@@ -79,7 +79,7 @@ export class MDXSeparator extends CommonSeparator {
     };
 
     // Configure WASM paths
-    const wasmVersion = '1.16.3';
+    const wasmVersion = '1.22.0';
     ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${wasmVersion}/dist/`;
 
     // Load the model
