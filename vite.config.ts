@@ -19,6 +19,12 @@ export default defineConfig({
       }
     }
   },
+  optimizeDeps: {
+    include: ['ndarray', 'ndarray-fft']
+  },
+  define: {
+    global: 'globalThis',
+  },
   test: {
     environment: 'happy-dom'
   }

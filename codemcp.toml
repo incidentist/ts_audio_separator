@@ -1,2 +1,2 @@
 [commands]
-test = ["npm run test"]
+test = ["npm", "run", "test"]

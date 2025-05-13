@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebDemix2 Test Page</title>
+  <script>
+    // Polyfill for global in browser environment
+    if (typeof global === 'undefined') {
+      window.global = window;
+    }
+  </script>
+</head>
+<body>
+  <h1>WebDemix2 Test Page</h1>
+  <script type="module" src="/src/test-page.ts"></script>
+</body>
+</html>
