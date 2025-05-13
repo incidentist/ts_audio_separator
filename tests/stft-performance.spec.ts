@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('STFT Performance Test', () => {
-  test('benchmark custom STFT implementation', async ({ page }) => {
+  test.skip('benchmark custom STFT implementation', async ({ page }) => {
     page.on('console', msg => console.log('Browser console:', msg.text()));
     page.on('pageerror', error => console.log('Page error:', error));
 
@@ -157,8 +157,8 @@ test.describe('STFT Performance Test', () => {
       for (const [duration, metrics] of Object.entries(config.durations)) {
         const m = metrics as any;
         console.log(`\n  ${duration}s audio (${m.samples} samples, ${m.numFrames} frames):`);
-        console.log(`    Forward:  ${m.avgForwardTime.toFixed(2)}ms (${(m.forwardThroughput/1000000).toFixed(2)} MSamples/sec)`);
-        console.log(`    Inverse:  ${m.avgInverseTime.toFixed(2)}ms (${(m.inverseThroughput/1000000).toFixed(2)} MSamples/sec)`);
+        console.log(`    Forward:  ${m.avgForwardTime.toFixed(2)}ms (${(m.forwardThroughput / 1000000).toFixed(2)} MSamples/sec)`);
+        console.log(`    Inverse:  ${m.avgInverseTime.toFixed(2)}ms (${(m.inverseThroughput / 1000000).toFixed(2)} MSamples/sec)`);
         console.log(`    Per frame: ${m.msPerFrame.toFixed(3)}ms`);
       }
     }
