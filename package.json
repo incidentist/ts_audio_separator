@@ -1,0 +1,11 @@
+{
+  "name": "web-demix2",
+  "version": "1.0.0",
+  "description": "Runs an MDX demixing model on audio",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
