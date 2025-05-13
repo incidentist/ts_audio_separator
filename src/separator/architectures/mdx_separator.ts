@@ -78,6 +78,10 @@ export class MDXSeparator extends CommonSeparator {
       logSeverityLevel: this.logLevel === 'debug' ? 0 : 3,
     };
 
+    // Configure WASM paths
+    const wasmVersion = '1.16.3';
+    ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${wasmVersion}/dist/`;
+
     // Load the model
     this.model = await ort.InferenceSession.create(this.modelPath, sessionOptions);
     this.debug('Model loaded successfully using ONNXruntime inferencing session.');
