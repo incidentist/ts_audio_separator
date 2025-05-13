@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Demix2 Example</title>
+</head>
+<body>
+    <h1>Web Demix2 - MDX Audio Separator</h1>
+
+    <div>
+        <h2>Upload Audio File</h2>
+        <input type="file" id="audioFile" accept="audio/*">
+        <button id="processBtn" disabled>Process Audio</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="results" style="display: none;">
+        <h2>Results</h2>
+        <div id="output"></div>
+    </div>
+
+    <script type="module">
+        import { MDXSeparator, AudioUtils } from './src/index.ts';
+
+        const fileInput = document.getElementById('audioFile');
+        const processBtn = document.getElementById('processBtn');
+        const statusDiv = document.getElementById('status');
+        const resultsDiv = document.getElementById('results');
+        const outputDiv = document.getElementById('output');
+
+        let separator = null;
+
+        fileInput.addEventListener('change', (e) => {
+            processBtn.disabled = !e.target.files.length;
+        });
+
+        processBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            try {
+                statusDiv.textContent = 'Initializing separator...';
+
+                // Initialize separator if not already done
+                if (!separator) {
+                    separator = new MDXSeparator(
+                        {
+                            modelPath: 'UVR_MDXNET_KARA_2.onnx',
+                            modelName: 'UVR_MDXNET_KARA_2',
+                            modelData: {
+                                compensate: 1.0,
+                                mdx_dim_f_set: 3072,
+                                mdx_dim_t_set: 8,
+                                mdx_n_fft_scale_set: 7680
+                            },
+                            logLevel: 'info'
+                        },
+                        {
+                            segmentSize: 256,
+                            overlap: 0.25,
+                            batchSize: 1,
+                            hopLength: 1024,
+                            enableDenoise: false
+                        }
+                    );
+
+                    statusDiv.textContent = 'Loading model (downloading from Hugging Face)...';
+                    await separator.loadModel();
+                }
+
+                statusDiv.textContent = 'Processing audio file...';
+
+                // Create URL for the file
+                const fileUrl = URL.createObjectURL(file);
+
+                // Process the audio
+                const results = await separator.separate(fileUrl);
+
+                statusDiv.textContent = 'Processing complete!';
+
+                // Clean up
+                URL.revokeObjectURL(fileUrl);
+
+                // Show results
+                outputDiv.innerHTML = `
+                    <p>Separation complete!</p>
+                    <p>Output files: ${results.length}</p>
+                    ${results.map(path => `<p>${path}</p>`).join('')}
+                `;
+                resultsDiv.style.display = 'block';
+
+            } catch (error) {
+                console.error('Error:', error);
+                statusDiv.textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
