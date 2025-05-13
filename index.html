@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page</title>
+</head>
+
+<body>
+    <script type="module">
+        // Import your library through Vite's module resolution
+        import * as WebDemix2 from '/src/index.ts';
+
+        // Make it available on window for the test
+        window.WebDemix2 = WebDemix2;
+
+        console.log('WebDemix2 loaded and set on window');
+    </script>
+</body>
+
+</html>

@@ -66,19 +66,27 @@ test.describe('MDX Separator Integration Tests', () => {
   });
 
   test('should load model, prepare mix, normalize, and process audio file', async ({ page }) => {
+    page.on('console', msg => console.log('Browser console:', msg.text()));
+    page.on('pageerror', error => console.log('Page error:', error));
+    // Log all network requests to see what's being loaded
+    page.on('request', request => console.log('Request:', request.url()));
+    page.on('response', response => console.log('Response:', response.url(), response.status()));
+
     // Serve the test file
     await page.route('**/test-audio.wav', async route => {
       const path = join(__dirname, 'fixtures', 'test-audio.wav');
       await route.fulfill({ path });
     });
 
-    // Create a simple HTML page with our library
-    await page.goto('data:text/html,<html><body><script type="module" src="/src/test-page.ts"></script></body></html>');
+    await page.goto('http://localhost:5173/test-page.html');
+
 
     // Execute the test in the browser context
     const result = await page.evaluate(async () => {
       // Wait for the library to be available
+      console.log("one");
       const checkLibrary = () => new Promise<void>((resolve) => {
+        console.log("two");
         const interval = setInterval(() => {
           if ((window as any).WebDemix2) {
             clearInterval(interval);
@@ -88,7 +96,7 @@ test.describe('MDX Separator Integration Tests', () => {
       });
 
       await checkLibrary();
-
+      console.log("three");
       // @ts-ignore - This will be available in the browser context
       const { MDXSeparator } = window.WebDemix2;
 
