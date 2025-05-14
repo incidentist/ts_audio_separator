@@ -1,0 +1,560 @@
+
+> web-demix2@0.1.0 test
+> playwright test tests/mdx-separator.spec.ts
+
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] › tests/mdx-separator.spec.ts:11:3 › MDX Separator Integration Tests › should process real audio file (heard_sound.wav)
+[1A[2K[chromium] › tests/mdx-separator.spec.ts:11:3 › MDX Separator Integration Tests › should process real audio file (heard_sound.wav)
+Checking for audio file at: /Users/incidentist/Code/temp/web-demix2/tests/fixtures/heard_sound.wav
+
+[1A[2KRequest: http://localhost:5173/test-page.html
+
+[1A[2KResponse: http://localhost:5173/test-page.html [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/@vite/client
+
+[1A[2KRequest: http://localhost:5173/src/test-page.ts
+
+[1A[2KResponse: http://localhost:5173/src/test-page.ts [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/src/index.ts
+
+[1A[2KResponse: http://localhost:5173/src/index.ts [33m200[39m
+
+[1A[2KResponse: http://localhost:5173/@vite/client [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/src/separator/common_separator.ts
+
+[1A[2KRequest: http://localhost:5173/src/separator/architectures/mdx_separator.ts
+
+[1A[2KRequest: http://localhost:5173/src/utils/audio_utils.ts
+
+[1A[2KRequest: http://localhost:5173/src/separator/architectures/stft.ts
+
+[1A[2KRequest: http://localhost:5173/node_modules/vite/dist/client/env.mjs
+
+[1A[2KResponse: http://localhost:5173/node_modules/vite/dist/client/env.mjs [33m200[39m
+
+[1A[2KBrowser console: [vite] connecting...
+
+[1A[2KResponse: http://localhost:5173/src/utils/audio_utils.ts [33m200[39m
+
+[1A[2KResponse: http://localhost:5173/src/separator/common_separator.ts [33m200[39m
+
+[1A[2KResponse: http://localhost:5173/src/separator/architectures/stft.ts [33m200[39m
+
+[1A[2KResponse: http://localhost:5173/src/separator/architectures/mdx_separator.ts [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/node_modules/.vite/deps/onnxruntime-web.js?v=c1ae8025
+
+[1A[2KBrowser console: [vite] connected.
+
+[1A[2KResponse: http://localhost:5173/node_modules/.vite/deps/onnxruntime-web.js?v=c1ae8025 [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/node_modules/.vite/deps/chunk-KVCYZR2Q.js?v=c1ae8025
+
+[1A[2KResponse: http://localhost:5173/node_modules/.vite/deps/chunk-KVCYZR2Q.js?v=c1ae8025 [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/src/utils/stft-ndarray.js
+
+[1A[2KBrowser console: Waiting for WebDemix2...
+
+[1A[2KResponse: http://localhost:5173/src/utils/stft-ndarray.js [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/node_modules/.vite/deps/ndarray.js?v=c1ae8025
+
+[1A[2KRequest: http://localhost:5173/node_modules/.vite/deps/ndarray-fft.js?v=c1ae8025
+
+[1A[2KResponse: http://localhost:5173/node_modules/.vite/deps/ndarray.js?v=c1ae8025 [33m200[39m
+
+[1A[2KRequest: http://localhost:5173/node_modules/.vite/deps/chunk-UMM52H5X.js?v=c1ae8025
+
+[1A[2KResponse: http://localhost:5173/node_modules/.vite/deps/ndarray-fft.js?v=c1ae8025 [33m200[39m
+
+[1A[2KResponse: http://localhost:5173/node_modules/.vite/deps/chunk-UMM52H5X.js?v=c1ae8025 [33m200[39m
+
+[1A[2KBrowser console: Module "buffer" has been externalized for browser compatibility. Cannot access "buffer.Buffer" in client code. See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+
+[1A[2KBrowser console: WebDemix2 loaded
+
+[1A[2KBrowser console: [DEBUG] MDX arch params: batchSize=1, segmentSize=256
+
+[1A[2KBrowser console: [DEBUG] MDX arch params: overlap=0.25, hopLength=1024, enableDenoise=false
+
+[1A[2KBrowser console: [DEBUG] MDX arch params: compensate=1, dimF=2048, dimT=256, nFft=5120
+
+[1A[2KBrowser console: [DEBUG] MDX arch params: configYaml=undefined
+
+[1A[2KBrowser console: Loading model...
+
+[1A[2KBrowser console: [DEBUG] Loading ONNX model for inference...
+
+[1A[2KBrowser console: [INFO] Downloading UVR_MDXNET_KARA_2 model from Hugging Face...
+
+[1A[2KRequest: https://huggingface.co/AI4future/RVC/resolve/main/UVR_MDXNET_KARA_2.onnx
+
+[1A[2KResponse: https://huggingface.co/AI4future/RVC/resolve/main/UVR_MDXNET_KARA_2.onnx [33m302[39m
+
+[1A[2KRequest: https://cdn-lfs-us-1.hf.co/repos/1d/68/1d688e09306f4a8a4ef3519289028f553ff36bd19cdd59da6f0c86f3e350bb22/bf32e15105a09c0f7dddd2b67346146334d6f3ecb399ed7638eba2ab07cbf5f4?response-content-disposition=inline%3B+filename*%3DUTF-8%27%27UVR_MDXNET_KARA_2.onnx%3B+filename%3D%22UVR_MDXNET_KARA_2.onnx%22%3B&Expires=1747195887&Policy=eyJTdGF0ZW1lbnQiOlt7IkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc0NzE5NTg4N319LCJSZXNvdXJjZSI6Imh0dHBzOi8vY2RuLWxmcy11cy0xLmhmLmNvL3JlcG9zLzFkLzY4LzFkNjg4ZTA5MzA2ZjRhOGE0ZWYzNTE5Mjg5MDI4ZjU1M2ZmMzZiZDE5Y2RkNTlkYTZmMGM4NmYzZTM1MGJiMjIvYmYzMmUxNTEwNWEwOWMwZjdkZGRkMmI2NzM0NjE0NjMzNGQ2ZjNlY2IzOTllZDc2MzhlYmEyYWIwN2NiZjVmND9yZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPSoifV19&Signature=m0Dsgei0nZ18%7EuoTF0lse-8LWByYSEAiqfPlGcou356iQIFkJGo-WrGV4mPdn81jof0mC%7EvWdUGLcfv4WSIqDObH5jCUMOmBcQL6hEq319NLun5aFNQoG4%7E3dkSn6%7ESj%7EJlf4ToHeLd4-qnp5niceI8y24nPvS7-LlQ8A5qPKaDCvxNqW3e%7EgHQwT4RCW6g%7EDvljZJrnnJXfAauA04zfQVHLBPpu88ioJFaRDLF1xuGMbZYL%7EZFvIr5s5RJ42pz-ZPq6i87M%7Em7zhOm02YafLQFoRdigGnCKcLRXEJ7HwgDZDVyO8lJjj7nxj2UKjpkC11rrSmfMvVL%7EVjeBPH0foA__&Key-Pair-Id=K24J24Z295AEI9
+
+[1A[2KResponse: https://cdn-lfs-us-1.hf.co/repos/1d/68/1d688e09306f4a8a4ef3519289028f553ff36bd19cdd59da6f0c86f3e350bb22/bf32e15105a09c0f7dddd2b67346146334d6f3ecb399ed7638eba2ab07cbf5f4?response-content-disposition=inline%3B+filename*%3DUTF-8%27%27UVR_MDXNET_KARA_2.onnx%3B+filename%3D%22UVR_MDXNET_KARA_2.onnx%22%3B&Expires=1747195887&Policy=eyJTdGF0ZW1lbnQiOlt7IkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc0NzE5NTg4N319LCJSZXNvdXJjZSI6Imh0dHBzOi8vY2RuLWxmcy11cy0xLmhmLmNvL3JlcG9zLzFkLzY4LzFkNjg4ZTA5MzA2ZjRhOGE0ZWYzNTE5Mjg5MDI4ZjU1M2ZmMzZiZDE5Y2RkNTlkYTZmMGM4NmYzZTM1MGJiMjIvYmYzMmUxNTEwNWEwOWMwZjdkZGRkMmI2NzM0NjE0NjMzNGQ2ZjNlY2IzOTllZDc2MzhlYmEyYWIwN2NiZjVmND9yZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPSoifV19&Signature=m0Dsgei0nZ18%7EuoTF0lse-8LWByYSEAiqfPlGcou356iQIFkJGo-WrGV4mPdn81jof0mC%7EvWdUGLcfv4WSIqDObH5jCUMOmBcQL6hEq319NLun5aFNQoG4%7E3dkSn6%7ESj%7EJlf4ToHeLd4-qnp5niceI8y24nPvS7-LlQ8A5qPKaDCvxNqW3e%7EgHQwT4RCW6g%7EDvljZJrnnJXfAauA04zfQVHLBPpu88ioJFaRDLF1xuGMbZYL%7EZFvIr5s5RJ42pz-ZPq6i87M%7Em7zhOm02YafLQFoRdigGnCKcLRXEJ7HwgDZDVyO8lJjj7nxj2UKjpkC11rrSmfMvVL%7EVjeBPH0foA__&Key-Pair-Id=K24J24Z295AEI9 [33m200[39m
+
+[1A[2KBrowser console: [INFO] Model downloaded successfully
+
+[1A[2KRequest: https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort-wasm-simd-threaded.jsep.mjs
+
+[1A[2KResponse: https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort-wasm-simd-threaded.jsep.mjs [33m200[39m
+
+[1A[2KRequest: https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort-wasm-simd-threaded.jsep.wasm
+
+[1A[2KResponse: https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort-wasm-simd-threaded.jsep.wasm [33m200[39m
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.152499 [I:onnxruntime:, inference_session.cc:594 TraceSessionOptions] Session Options {  execution_mode:0 execution_order:DEFAULT enable_profiling:0 optimized_model_filepath:"" enable_mem_pattern:0 enable_mem_reuse:1 enable_cpu_mem_arena:0 profile_file_prefix: session_logid: session_log_severity_level:0 session_log_verbosity_level:0 max_num_graph_transformation_steps:10 graph_optimization_level:3 intra_op_param:OrtThreadPoolParams { thread_pool_size: 0 auto_set_affinity: 0 allow_spinning: 1 dynamic_block_base_: 0 stack_size: 0 affinity_str:  set_denormal_as_zero: 0 } inter_op_param:OrtThreadPoolParams { thread_pool_size: 0 auto_set_affinity: 0 allow_spinning: 1 dynamic_block_base_: 0 stack_size: 0 affinity_str:  set_denormal_as_zero: 0 } use_per_session_threads:0 thread_pool_allow_spinning:1 use_deterministic_compute:0 ep_selection_policy:0 config_options: {   session.use_ort_model_bytes_directly: 1 } }
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.154100 [I:onnxruntime:, inference_session.cc:414 operator()] Flush-to-zero and denormal-as-zero are off
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.154200 [I:onnxruntime:, inference_session.cc:495 ConstructorCommon] Using global/env threadpools since use_per_session_threads_ is false
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.187300 [I:onnxruntime:, inference_session.cc:1810 Initialize] Initializing session.
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.187600 [I:onnxruntime:, inference_session.cc:1847 Initialize] Adding default CPU execution provider.
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.230100 [I:onnxruntime:, graph_partitioner.cc:1124 InlineFunctionsAOT] This model does not have any local functions defined. AOT Inlining is not performed
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.231399 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer EnsureUniqueDQForNodeUnit modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.231899 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer Level1_RuleBasedTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.232399 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer DoubleQDQPairsRemover modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.233799 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer ConstantSharing modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.235000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer CommonSubexpressionElimination modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.236899 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer ConstantFolding modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.237299 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulAddFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.238100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer ReshapeFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.238400 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer FreeDimensionOverrideTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.238600 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GeluFusionL1 modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.239000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer LayerNormFusionL1 modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.239500 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQPropagationTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.240100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer WeightBiasQuantization modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.240100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer EnsureUniqueDQForNodeUnit modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.240300 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer RocmBlasAltImpl modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.242400 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer TransposeOptimizer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.247500 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer Level2_RuleBasedTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.247899 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer TransposeOptimizer_CPUExecutionProvider modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.248100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQS8ToU8Transformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.249699 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQSelectorActionTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.250000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GemmActivationFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.250400 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulIntegerToFloatFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.250600 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer DynamicQuantizeMatMulFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.250800 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252000 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252199 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252300 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252399 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252499 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252600 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252600 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252699 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252800 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252899 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252999 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.252999 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253100 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253199 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253199 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253399 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253399 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253499 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253600 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253699 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253800 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253800 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.253900 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254000 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254100 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254100 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254200 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254300 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254400 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254400 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254500 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254600 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254700 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.254899 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.255000 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.255100 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.255200 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.255300 [V:onnxruntime:, selector_action_transformer.cc:126 MatchAndProcess] Matched Conv
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.255300 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer ConvActivationFusion modified: 1 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.257399 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GeluFusionL2 modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.257499 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer LayerNormFusionL2 modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.257799 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer SimplifiedLayerNormFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.262200 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer AttentionFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.263200 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer EmbedLayerNormFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.263899 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GatherSliceToSplitFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.264499 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GatherToSliceFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.264800 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatmulTransposeFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.264999 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer BiasGeluFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.265900 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GroupQueryAttentionFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.266500 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer SkipLayerNormFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.267100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer FastGeluFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.267399 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QuickGeluFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.267800 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer BiasSoftmaxFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.268100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer BiasDropoutFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.268699 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulScaleFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.268899 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulActivationFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.269100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulNBitsFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.269499 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQFinalCleanupTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.269600 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer Level2_RuleBasedTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.269800 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQS8ToU8Transformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQSelectorActionTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270200 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GemmActivationFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270200 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulIntegerToFloatFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270400 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer DynamicQuantizeMatMulFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270500 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer ConvActivationFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270600 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GeluFusionL2 modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270700 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer LayerNormFusionL2 modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270800 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer SimplifiedLayerNormFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.270899 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer AttentionFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer EmbedLayerNormFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GatherSliceToSplitFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271200 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GatherToSliceFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271300 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatmulTransposeFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271399 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer BiasGeluFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271500 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer GroupQueryAttentionFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271600 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer SkipLayerNormFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271699 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer FastGeluFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.271800 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QuickGeluFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer BiasSoftmaxFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272100 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer BiasDropoutFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272199 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulScaleFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272300 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulActivationFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272399 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MatMulNBitsFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272499 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer QDQFinalCleanupTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.272999 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer NhwcTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.273299 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer ConvAddActivationFusion modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.274400 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer RemoveDuplicateCastTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.274500 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer CastFloat16Transformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.275000 [I:onnxruntime:, graph_transformer.cc:15 Apply] GraphTransformer MemcpyTransformer modified: 0 with status: OK
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.275800 [V:onnxruntime:, session_state.cc:1260 VerifyEachNodeIsAssignedToAnEp] Node placements
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.275899 [V:onnxruntime:, session_state.cc:1263 VerifyEachNodeIsAssignedToAnEp]  All nodes placed on [CPUExecutionProvider]. Number of nodes: 139
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.284999 [V:onnxruntime:, session_state.cc:144 CreateGraphInfo] SaveMLValueNameIndexMapping
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.285399 [V:onnxruntime:, session_state.cc:190 CreateGraphInfo] Done saving OrtValue mappings.
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.285800 [I:onnxruntime:, allocation_planner.cc:2574 CreateGraphPartitioner] Use DeviceBasedPartition as default
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.288499 [I:onnxruntime:, session_state_utils.cc:284 SaveInitializedTensors] Saving initialized tensors.
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.297499 [I:onnxruntime:, session_state_utils.cc:451 SaveInitializedTensors] Done saving initialized tensors
+
+[1A[2KBrowser console: 2025-05-13 20:11:29.312499 [I:onnxruntime:, inference_session.cc:2269 Initialize] Session successfully initialized.
+
+[1A[2KBrowser console: [DEBUG] Model loaded successfully using ONNXruntime inferencing session.
+
+[1A[2KBrowser console: [DEBUG] Initializing model settings...
+
+[1A[2KBrowser console: [DEBUG] Model input params: nFft=5120 hopLength=1024 dimF=2048
+
+[1A[2KBrowser console: [DEBUG] Model settings: nBins=2561, trim=2560, chunkSize=261120, genSize=256000
+
+[1A[2KBrowser console: [DEBUG] Expected frames from chunk size: 251, Target: 256
+
+[1A[2KBrowser console: Model loaded successfully
+
+[1A[2KBrowser console: Starting separation process...
+
+[1A[2KBrowser console: [DEBUG] Loading audio file /heard_sound.wav...
+
+[1A[2KRequest: http://localhost:5173/heard_sound.wav
+
+[1A[2KResponse: http://localhost:5173/heard_sound.wav [33m200[39m
+
+[1A[2KBrowser console: [DEBUG] Preparing mix for input audio file /heard_sound.wav...
+
+[1A[2KBrowser console: [DEBUG] Preparing mix for input audio...
+
+[1A[2KBrowser console: [DEBUG] Normalizing mix before demixing...
+
+[1A[2KBrowser console: [DEBUG] Normalizing audio...
+
+[1A[2KBrowser console: [DEBUG] Starting demixing process with isMatchMix: false...
+
+[1A[2KBrowser console: [DEBUG] Initializing model settings...
+
+[1A[2KBrowser console: [DEBUG] Model input params: nFft=5120 hopLength=1024 dimF=2048
+
+[1A[2KBrowser console: [DEBUG] Model settings: nBins=2561, trim=2560, chunkSize=261120, genSize=256000
+
+[1A[2KBrowser console: [DEBUG] Expected frames from chunk size: 251, Target: 256
+
+[1A[2KBrowser console: [DEBUG] Original mix stored. Shape: 2x216064
+
+[1A[2KBrowser console: [DEBUG] Standard chunk size: 261120, Overlap: 0.25
+
+[1A[2KBrowser console: [DEBUG] Generated size calculated: 256000
+
+[1A[2KBrowser console: [DEBUG] Mixture prepared with padding. Mixture shape: 261120
+
+[1A[2KBrowser console: [DEBUG] Step size for processing chunks: 195840 as overlap is set to 0.25.
+
+[1A[2KBrowser console: [DEBUG] Total chunks to process: 2
+
+[1A[2KBrowser console: [DEBUG] Processing chunk 1/2: Start 0, End 261120
+
+[1A[2KBrowser console: [DEBUG] Window applied to the chunk.
+
+[1A[2KBrowser console: [DEBUG] Running STFT on the mix. Mix shape: 2x261120
+
+[1A[2KBrowser console: [DEBUG] STFT applied on mix. Spectrum shape: 2x2048x256x2
+
+[1A[2KBrowser console: [DEBUG] Preparing model input. Frames: 256, Expected: 256
+
+[1A[2KBrowser console: [DEBUG] Creating tensor with shape: [1, 4, 2048, 256]
+
+[1A[2KBrowser console: [DEBUG] Model run on the spectrum without denoising.
+
+[1A[2KBrowser console: [DEBUG] Inverse STFT applied. Returning result with shape: 2x266240
+
+[1A[2KBrowser console: [DEBUG] Processing chunk 2/2: Start 195840, End 261120
+
+[1A[2KBrowser console: [DEBUG] Window applied to the chunk.
+
+[1A[2KBrowser console: [DEBUG] Running STFT on the mix. Mix shape: 2x261120
+
+[1A[2KBrowser console: [DEBUG] STFT applied on mix. Spectrum shape: 2x2048x256x2
+
+[1A[2KBrowser console: [DEBUG] Preparing model input. Frames: 256, Expected: 256
+
+[1A[2KBrowser console: [DEBUG] Creating tensor with shape: [1, 4, 2048, 256]
+
+[1A[2KBrowser console: [DEBUG] Model run on the spectrum without denoising.
+
+[1A[2KBrowser console: [DEBUG] Inverse STFT applied. Returning result with shape: 2x266240
+
+[1A[2KBrowser console: [DEBUG] Normalizing result by dividing result by divider.
+
+[1A[2KBrowser console: [DEBUG] Concatenated tar_waves. Shape: 2x216064
+
+[1A[2KBrowser console: [DEBUG] Match mix mode; compensate multiplier applied.
+
+[1A[2KBrowser console: [DEBUG] Demixing process completed.
+
+[1A[2KBrowser console: [DEBUG] Demixing completed.
+
+[1A[2KBrowser console: [DEBUG] Processing output files...
+
+[1A[2KBrowser console: [DEBUG] Normalizing primary source...
+
+[1A[2KBrowser console: [DEBUG] Normalizing audio...
+
+[1A[2KBrowser console: [DEBUG] Producing secondary source: demixing in match_mix mode
+
+[1A[2KBrowser console: [DEBUG] Starting demixing process with isMatchMix: true...
+
+[1A[2KBrowser console: [DEBUG] Initializing model settings...
+
+[1A[2KBrowser console: [DEBUG] Model input params: nFft=5120 hopLength=1024 dimF=2048
+
+[1A[2KBrowser console: [DEBUG] Model settings: nBins=2561, trim=2560, chunkSize=261120, genSize=256000
+
+[1A[2KBrowser console: [DEBUG] Expected frames from chunk size: 251, Target: 256
+
+[1A[2KBrowser console: [DEBUG] Original mix stored. Shape: 2x216064
+
+[1A[2KBrowser console: [DEBUG] Chunk size for matching mix: 261120, Overlap: 0.02
+
+[1A[2KBrowser console: [DEBUG] Generated size calculated: 256000
+
+[1A[2KBrowser console: [DEBUG] Mixture prepared with padding. Mixture shape: 261120
+
+[1A[2KBrowser console: [DEBUG] Step size for processing chunks: 255897 as overlap is set to 0.02.
+
+[1A[2KBrowser console: [DEBUG] Total chunks to process: 2
+
+[1A[2KBrowser console: [DEBUG] Processing chunk 1/2: Start 0, End 261120
+
+[1A[2KBrowser console: [DEBUG] Window applied to the chunk.
+
+[1A[2KBrowser console: [DEBUG] Running STFT on the mix. Mix shape: 2x261120
+
+[1A[2KBrowser console: [DEBUG] STFT applied on mix. Spectrum shape: 2x2048x256x2
+
+[1A[2KBrowser console: [DEBUG] isMatchMix: spectrum prediction obtained directly from STFT output.
+
+[1A[2KBrowser console: [DEBUG] Inverse STFT applied. Returning result with shape: 2x266240
+
+[1A[2KBrowser console: [DEBUG] Processing chunk 2/2: Start 255897, End 261120
+
+[1A[2KBrowser console: [DEBUG] Window applied to the chunk.
+
+[1A[2KBrowser console: [DEBUG] Running STFT on the mix. Mix shape: 2x261120
+
+[1A[2KBrowser console: [DEBUG] STFT applied on mix. Spectrum shape: 2x2048x256x2
+
+[1A[2KBrowser console: [DEBUG] isMatchMix: spectrum prediction obtained directly from STFT output.
+
+[1A[2KBrowser console: [DEBUG] Inverse STFT applied. Returning result with shape: 2x266240
+
+[1A[2KBrowser console: [DEBUG] Normalizing result by dividing result by divider.
+
+[1A[2KBrowser console: [DEBUG] Concatenated tar_waves. Shape: 2x216064
+
+[1A[2KBrowser console: [DEBUG] Demixing process completed.
+
+[1A[2KBrowser console: [DEBUG] Inverting secondary stem by subtracting demixed stem from original mix
+
+[1A[2KBrowser console: [INFO] Saving instrumental stem to output/UVR_MDXNET_KARA_2_instrumental.wav...
+
+[1A[2KBrowser console: [INFO] Created instrumental output blob: 864300 bytes
+
+[1A[2KBrowser console: [INFO] Saving vocals stem to output/UVR_MDXNET_KARA_2_vocals.wav...
+
+[1A[2KBrowser console: [INFO] Created vocals output blob: 864300 bytes
+
+[1A[2KBrowser console: Separation completed successfully
+
+[1A[2K
+=== MDX Separator Real Audio Test Results ===
+
+
+[1A[2KModel loaded: [33mtrue[39m
+
+[1A[2KSeparation successful: [33mtrue[39m
+
+[1A[2KOutput files created: [33m2[39m
+
+[1A[2KOutput URLs: [
+  [32m'blob:http://localhost:5173/4129e141-c82c-43c3-b47d-36eb505b8f6f'[39m,
+  [32m'blob:http://localhost:5173/ce323bd5-4d0c-49f1-9b53-717257f1669a'[39m
+]
+
+[1A[2KBlob info: instrumental (864300 bytes) at blob:http://localhost:5173/4129e141-c82c-43c3-b47d-36eb505b8f6f
+
+[1A[2KSaved instrumental to /Users/incidentist/Code/temp/web-demix2/tests/output/instrumental.wav
+
+[1A[2KBlob info: vocals (864300 bytes) at blob:http://localhost:5173/ce323bd5-4d0c-49f1-9b53-717257f1669a
+
+[1A[2KSaved vocals to /Users/incidentist/Code/temp/web-demix2/tests/output/vocals.wav
+
+[1A[2K  1 passed (34.2s)
+
+To open last HTML report run:
+
+  npx playwright show-report
+

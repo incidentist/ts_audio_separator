@@ -131,10 +131,12 @@ export class MDXSeparator extends CommonSeparator {
     // STFT frames formula: frames = (samples - nFft) / hopLength + 1
     // Rearranging: samples = (frames - 1) * hopLength + nFft
     // For segmentSize frames: samples = (segmentSize - 1) * hopLength + nFft
-    this.chunkSize = (this.segmentSize - 1) * this.hopLength + this.nFft;
+    // this.chunkSize = (this.segmentSize - 1) * this.hopLength + this.nFft;
+    this.chunkSize = 261120; // 256 * 1024 + 7680
+
 
     // gen_size is the chunk size minus twice the trim size
-    this.genSize = this.chunkSize - 2 * this.trim;
+    this.genSize = this.chunkSize - (2 * this.trim);
 
     // Initialize STFT
     this.stft = new STFT(this.nFft, this.hopLength, this.dimF);
@@ -290,7 +292,7 @@ export class MDXSeparator extends CommonSeparator {
     // Initialize counters for processing chunks
     let total = 0;
     const totalLength = mixture[0].length;
-    const totalChunks = Math.ceil((totalLength - chunkSize) / step) + 1;
+    const totalChunks = Math.ceil(totalLength / step);
     this.debug(`Total chunks to process: ${totalChunks}`);
 
     // Process each chunk of the mixture
@@ -370,7 +372,7 @@ export class MDXSeparator extends CommonSeparator {
           source[ch][i] *= this.compensate;
         }
       }
-      this.debug('Match mix mode; compensate multiplier applied.');
+      this.debug('Compensate multiplier applied to non-match mix.');
     }
 
     this.debug('Demixing process completed.');

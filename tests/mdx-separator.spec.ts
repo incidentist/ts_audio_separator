@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 test.describe('MDX Separator Integration Tests', () => {
-  test('should process real audio file (heard_sound.flac)', async ({ page }) => {
+  test('should process real audio file (heard_sound.wav)', async ({ page }) => {
     page.on('console', msg => console.log('Browser console:', msg.text()));
     page.on('pageerror', error => console.log('Page error:', error));
 
@@ -17,12 +17,12 @@ test.describe('MDX Separator Integration Tests', () => {
     page.on('response', response => console.log('Response:', response.url(), response.status()));
 
     // Check if the audio file exists
-    const audioPath = join(__dirname, 'fixtures', 'heard_sound.flac');
+    const audioPath = join(__dirname, 'fixtures', 'heard_sound.wav');
     console.log('Checking for audio file at:', audioPath);
     expect(existsSync(audioPath)).toBe(true);
 
     // Serve the test file
-    await page.route('**/heard_sound.flac', async route => {
+    await page.route('**/heard_sound.wav', async route => {
       await route.fulfill({ path: audioPath });
     });
 
@@ -48,7 +48,7 @@ test.describe('MDX Separator Integration Tests', () => {
 
       // Model configuration for UVR_MDXNET_KARA_2
       const modelData = {
-        compensate: 1.0,
+        compensate: 1.065,
         mdx_dim_f_set: 2048,
         mdx_dim_t_set: 8,
         mdx_n_fft_scale_set: 5120
@@ -82,7 +82,7 @@ test.describe('MDX Separator Integration Tests', () => {
       console.log("Model loaded successfully");
 
       // Test with real audio file
-      const audioUrl = '/heard_sound.flac';
+      const audioUrl = '/heard_sound.wav';
 
       // Test separate method (which includes prepareMix and normalize)
       let separateResult = null;

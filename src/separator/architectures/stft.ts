@@ -106,10 +106,12 @@ export class STFT {
     const numFrames = spectrogram[0][0].length;
     const outputLength = (numFrames - 1) * this.hopLength + this.nFft;
 
-    // Initialize output signal
+    // Initialize output signal and window accumulator
     const signal: Float32Array[] = [];
+    const windowAcc: Float32Array[] = [];
     for (let ch = 0; ch < channels; ch++) {
       signal.push(new Float32Array(outputLength));
+      windowAcc.push(new Float32Array(outputLength));
     }
 
     // Window for overlap-add
@@ -144,7 +146,17 @@ export class STFT {
         for (let i = 0; i < this.nFft && i < timeDomain.length; i++) {
           if (start + i < outputLength) {
             signal[ch][start + i] += timeDomain[i] * window[i];
+            windowAcc[ch][start + i] += window[i] * window[i];
           }
+        }
+      }
+    }
+
+    // Normalize by window accumulator to compensate for overlap
+    for (let ch = 0; ch < channels; ch++) {
+      for (let i = 0; i < outputLength; i++) {
+        if (windowAcc[ch][i] > 0) {
+          signal[ch][i] /= windowAcc[ch][i];
         }
       }
     }
@@ -280,13 +292,55 @@ export class STFT {
     // Conjugate the input
     const conjugated = paddedInput.map(([real, imag]) => [real, -imag] as [number, number]);
 
-    // Apply FFT
-    const fftResult = this.fftRadix2(new Float32Array(conjugated.map(c => c[0])));
+    // Apply FFT to complex conjugated data
+    const fftResult = this.fftComplex(conjugated);
 
-    // Conjugate and scale the output
+    // Take real part and scale the output
     const output = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       output[i] = fftResult[i][0] / paddedSize;
+    }
+
+    return output;
+  }
+
+  /**
+   * FFT that takes and returns complex numbers
+   */
+  private fftComplex(input: Array<[number, number]>): Array<[number, number]> {
+    const n = input.length;
+
+    if (n <= 1) {
+      return input;
+    }
+
+    // Bit reversal
+    const output: Array<[number, number]> = new Array(n);
+    for (let i = 0; i < n; i++) {
+      output[i] = input[this.bitReverse(i, n)];
+    }
+
+    // Cooley-Tukey FFT
+    for (let size = 2; size <= n; size *= 2) {
+      const halfSize = size / 2;
+      const angleStep = -2 * Math.PI / size;
+
+      for (let i = 0; i < n; i += size) {
+        for (let j = 0; j < halfSize; j++) {
+          const angle = angleStep * j;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+
+          const a = output[i + j];
+          const b = output[i + j + halfSize];
+
+          const tReal = b[0] * cos - b[1] * sin;
+          const tImag = b[0] * sin + b[1] * cos;
+
+          output[i + j] = [a[0] + tReal, a[1] + tImag];
+          output[i + j + halfSize] = [a[0] - tReal, a[1] - tImag];
+        }
+      }
     }
 
     return output;
