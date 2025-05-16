@@ -1,3 +1,5 @@
+import * as tf from '@tensorflow/tfjs';
+
 // Base class for all separator architectures
 export abstract class CommonSeparator {
   protected outputDir: string;
@@ -75,49 +77,38 @@ export abstract class CommonSeparator {
     return `${this.outputDir}/${this.modelName}_${stemName}.${this.outputFormat}`;
   }
 
-  // Common audio processing methods
-  protected async prepareMix(audioData: Float32Array | Float32Array[]): Promise<Float32Array[]> {
-    // If input is already 2D array, return it
-    if (Array.isArray(audioData)) {
-      return audioData;
-    }
-
-    // Convert mono to stereo by duplicating the channel
-    if (audioData instanceof Float32Array) {
-      return [audioData, audioData];
-    }
-
-    throw new Error('Invalid audio data format');
-  }
-
-  protected normalize(wave: Float32Array | Float32Array[], maxPeak: number, minPeak: number): Float32Array[] {
-    // Convert to array if single channel
-    const channels = Array.isArray(wave) ? wave : [wave];
-
-    // Find the maximum absolute value across all channels
-    let maxVal = 0;
-    for (const channel of channels) {
-      for (let i = 0; i < channel.length; i++) {
-        maxVal = Math.max(maxVal, Math.abs(channel[i]));
+  /** Converts mono → stereo and passes through existing stereo. */
+  protected async prepareMix(audioData: tf.Tensor): Promise<tf.Tensor2D> {
+    return tf.tidy(() => {
+      if (audioData.rank === 2) {
+        // Already [channels, samples] – return as-is.
+        return audioData as tf.Tensor2D;
       }
-    }
-
-    // Calculate normalization factor
-    let normFactor = 1;
-    if (maxVal > maxPeak) {
-      normFactor = maxPeak / maxVal;
-    } else if (maxVal < minPeak && maxVal > 0) {
-      normFactor = minPeak / maxVal;
-    }
-
-    // Apply normalization
-    return channels.map(channel => {
-      const normalized = new Float32Array(channel.length);
-      for (let i = 0; i < channel.length; i++) {
-        normalized[i] = channel[i] * normFactor;
+      if (audioData.rank === 1) {
+        // Duplicate the mono channel → shape [2, samples].
+        return tf.stack([audioData, audioData]) as tf.Tensor2D;
       }
-      return normalized;
+      throw new Error('Invalid audio data format (expect 1-D or 2-D Tensor)');
     });
+  }
+  protected async normalize(
+    wave: tf.Tensor,            // tf.Tensor1D | tf.Tensor2D
+    maxPeak = 1.0,
+    minPeak?: number            // optional
+  ): Promise<tf.Tensor> {       // returns same rank as input
+    const mono = wave.rank === 1;
+    const audio = mono ? wave : wave as tf.Tensor2D;
+
+    const [peak] = await tf.max(tf.abs(audio)).data();
+    let gain = 1;
+    if (peak > maxPeak) {
+      gain = maxPeak / peak;
+    } else if (minPeak !== undefined && peak < minPeak && peak > 0) {
+      gain = minPeak / peak;
+    }
+
+    const out = tf.tidy(() => audio.mul(gain));
+    return mono ? out.squeeze([0]) : out;   // keep original rank
   }
 }
 

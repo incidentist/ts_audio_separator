@@ -1,4 +1,6 @@
 import * as ort from 'onnxruntime-web';
+import * as tf from '@tensorflow/tfjs';
+
 import { CommonSeparator, SeparatorConfig } from '../common_separator';
 import { AudioUtils } from '../../utils/audio_utils';
 import { STFT } from './stft';
@@ -155,11 +157,15 @@ export class MDXSeparator extends CommonSeparator {
 
     // Load audio file
     this.debug(`Loading audio file ${audioFilePath}...`);
-    const audioChannels = await AudioUtils.loadAudioFile(audioFilePath, this.sampleRate);
+    const audioChannels: Float32Array<ArrayBufferLike>[] = await AudioUtils.loadAudioFile(audioFilePath, this.sampleRate);
+
+    this.debug(`Converting audio to tensor...`);
+    let mixTensor = tf.tensor(audioChannels);
+
 
     // Prepare the mix for processing
     this.debug(`Preparing mix for input audio file ${this.audioFilePath}...`);
-    const mix = await this.prepareMix(audioChannels);
+    const mix = await this.prepareMix(mixTensor);
 
     this.debug('Normalizing mix before demixing...');
     const normalizedMix = this.normalize(mix, this.normalizationThreshold, this.amplificationThreshold);
@@ -220,13 +226,17 @@ export class MDXSeparator extends CommonSeparator {
   }
 
   // Method to prepare mix for processing
-  async prepareMix(audioData: Float32Array | Float32Array[]): Promise<Float32Array[]> {
+  async prepareMix(audioData: tf.Tensor): Promise<tf.Tensor2D> {
     this.debug(`Preparing mix for input audio...`);
     return super.prepareMix(audioData);
   }
 
   // Method to normalize audio
-  normalize(wave: Float32Array | Float32Array[], maxPeak: number, minPeak: number): Float32Array[] {
+  async normalize(
+    wave: tf.Tensor,            // tf.Tensor1D | tf.Tensor2D
+    maxPeak = 1.0,
+    minPeak?: number            // optional
+  ): Promise<tf.Tensor> {
     this.debug('Normalizing audio...');
     return super.normalize(wave, maxPeak, minPeak);
   }
