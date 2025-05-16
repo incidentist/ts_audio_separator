@@ -168,7 +168,7 @@ export class MDXSeparator extends CommonSeparator {
     const mix = await this.prepareMix(mixTensor);
 
     this.debug('Normalizing mix before demixing...');
-    const normalizedMix = this.normalize(mix, this.normalizationThreshold, this.amplificationThreshold);
+    const normalizedMix = await this.normalize(mix, this.normalizationThreshold, this.amplificationThreshold);
 
     // Start the demixing process
     const source = await this.demix(normalizedMix);
@@ -241,13 +241,13 @@ export class MDXSeparator extends CommonSeparator {
     return super.normalize(wave, maxPeak, minPeak);
   }
 
-  private async demix(mix: Float32Array[], isMatchMix: boolean = false): Promise<Float32Array[]> {
+  private async demix(mix: tf.Tensor2D, isMatchMix: boolean = false): Promise<tf.Tensor> {
     this.debug(`Starting demixing process with isMatchMix: ${isMatchMix}...`);
     this.initializeModelSettings();
 
     // Preserves the original mix for later use
     const orgMix = mix;
-    this.debug(`Original mix stored. Shape: ${mix.length}x${mix[0].length}`);
+    this.debug(`Original mix stored. Shape: ${mix.shape}`);
 
     // Initializes a list to store the separated waveforms
     const tarWaves_: Float32Array[][] = [];
@@ -275,33 +275,34 @@ export class MDXSeparator extends CommonSeparator {
     this.debug(`Generated size calculated: ${genSize}`);
 
     // Calculate padding to make the mix length a multiple of the generated size
-    const pad = genSize + this.trim - ((mix[0].length) % genSize);
+    const mixLength = mix.shape[1];  // Assuming mix is [channels, time]
+    const pad = genSize + this.trim - (mixLength % genSize);
 
-    // Prepare the mixture with padding at the beginning and the end
-    const mixture = mix.map(channel => {
-      const padded = new Float32Array(this.trim + channel.length + pad);
-      padded.set(channel, this.trim);
-      return padded;
-    });
-    this.debug(`Mixture prepared with padding. Mixture shape: ${mixture[0].length}`);
+    // Create zeros tensors for padding at beginning and end
+    const leftPad = tf.zeros([2, this.trim]);  // 2 channels, trim samples
+    const rightPad = tf.zeros([2, pad]);       // 2 channels, pad samples
+
+    // Concatenate along time dimension (axis 1) to create padded mixture
+    const mixture = tf.concat([leftPad, mix, rightPad], 1);
+    this.debug(`Mixture prepared with padding. Mixture shape: ${mixture.shape}`);
 
     // Calculate the step size for processing chunks based on the overlap
     const step = Math.floor((1 - overlap) * chunkSize);
     this.debug(`Step size for processing chunks: ${step} as overlap is set to ${overlap}.`);
 
     // Initialize arrays to store the results and to account for overlap
-    const result = [
-      new Float32Array(mixture[0].length),
-      new Float32Array(mixture[1].length)
-    ];
-    const divider = [
-      new Float32Array(mixture[0].length),
-      new Float32Array(mixture[1].length)
-    ];
+    // Initialize tensors to store results and to account for overlap
+    // Shape: [1, 2, timeLength] matching the Python dimensions
+    const resultShape = [1, 2, mixLength];
+    const result = tf.zeros(resultShape);     // For accumulating processed chunks
+    const divider = tf.zeros(resultShape);    // For tracking overlap counts
+
+    // You could log the shapes for debugging
+    this.debug(`Initialized result and divider tensors with shape: ${result.shape}`);
 
     // Initialize counters for processing chunks
     let total = 0;
-    const totalLength = mixture[0].length;
+    const totalLength = mixLength;
     const totalChunks = Math.ceil(totalLength / step);
     this.debug(`Total chunks to process: ${totalChunks}`);
 
@@ -314,42 +315,66 @@ export class MDXSeparator extends CommonSeparator {
 
       // Handle windowing for overlapping chunks
       const chunkSizeActual = end - start;
-      let window: Float32Array | null = null;
+      let window: tf.Tensor | null = null;
 
       if (overlap !== 0) {
-        window = new Float32Array(chunkSizeActual);
-        for (let j = 0; j < chunkSizeActual; j++) {
-          window[j] = 0.5 - 0.5 * Math.cos(2 * Math.PI * j / (chunkSizeActual - 1));
-        }
-        this.debug('Window applied to the chunk.');
+        // Create Hann window
+        const windowBase = tf.signal.hannWindow(chunkSizeActual);
+
+        // Reshape to match the shape [1, 2, chunkSizeActual]
+        // Equivalent to np.tile(window[None, None, :], (1, 2, 1))
+        window = windowBase.expandDims(0).expandDims(0).tile([1, 2, 1]);
+        windowBase.dispose();
+
+        this.debug("Window applied to the chunk.");
       }
 
-      // Zero-pad the chunk to prepare it for processing
-      const mixPart = mixture.map(channel => {
-        const chunk = channel.slice(start, end);
-        if (end !== i + chunkSize) {
-          const paddedChunk = new Float32Array(chunkSize);
-          paddedChunk.set(chunk);
-          return paddedChunk;
-        }
-        return chunk;
-      });
+      // Extract the chunk from mixture - shape [2, chunkSizeActual]
+      let mixPart_ = mixture.slice([0, start], [2, chunkSizeActual]);
 
-      // Run the model to separate the sources
-      const tarWaves = await this.runModel(mixPart, isMatchMix);
-
-      // Apply windowing if needed and accumulate the results
-      for (let ch = 0; ch < 2; ch++) {
-        for (let s = 0; s < chunkSizeActual; s++) {
-          if (window !== null) {
-            tarWaves[ch][s] *= window[s];
-            divider[ch][start + s] += window[s];
-          } else {
-            divider[ch][start + s] += 1;
-          }
-          result[ch][start + s] += tarWaves[ch][s];
-        }
+      if (end !== i + chunkSize) {
+        // Handle padding for incomplete chunks
+        const padSize = (i + chunkSize) - end;
+        const padding = tf.zeros([2, padSize]);
+        mixPart_ = tf.concat([mixPart_, padding], 1);  // Concat along time axis
+        padding.dispose();
       }
+
+      // Add batch dimension - this matches the Python code:
+      // mix_part = torch.tensor([mix_part_], dtype=torch.float32)
+      const mixPart = mixPart_.expandDims(0);  // Shape: [1, 2, chunkSize]
+      mixPart_.dispose();
+
+      // Split into batches if needed
+      const mixWaves = tf.split(mixPart, Math.ceil(mixPart.shape[0] / this.batchSize));
+      const totalBatches = mixWaves.length;
+      this.debug(`Mix part split into batches. Number of batches: ${totalBatches}`);
+
+      let batchesProcessed = 0;
+      for (const mixWave of mixWaves) {
+        batchesProcessed += 1;
+        this.debug(`Processing mix_wave batch ${batchesProcessed}/${totalBatches}`);
+
+        // Run the model to separate the sources
+        const tarWaves = await this.runModel(mixWave, isMatchMix);
+
+        // Apply window and update result/divider in one clean step
+        const { result: newResult, divider: newDivider } =
+          this.applyWindow(tarWaves, window, result, divider, start, end, chunkSizeActual);
+
+        // Update with new tensors and clean up old ones
+        result.dispose();
+        divider.dispose();
+        result = newResult;
+        divider = newDivider;
+
+        // Clean up
+        tarWaves.dispose();
+      }
+
+      // Make sure to dispose tensors when done
+      if (window) window.dispose();
+      mixPart.dispose();
     }
 
     // Normalize the results by the divider to account for overlap
@@ -390,15 +415,93 @@ export class MDXSeparator extends CommonSeparator {
   }
 
   /**
+   * Apply window to tarWaves and update result and divider tensors
+   * Handles both windowed and non-windowed cases
+   */
+  private applyWindow(
+    tarWaves: tf.Tensor,
+    window: tf.Tensor | null,
+    result: tf.Tensor,
+    divider: tf.Tensor,
+    start: number,
+    end: number,
+    chunkSizeActual: number
+  ): { result: tf.Tensor, divider: tf.Tensor } {
+    // Calculate actual slice size
+    const sliceSize = end - start;
+
+    if (window !== null) {
+      // Apply window to the tar_waves
+      const windowedTarWaves = tf.mul(tarWaves.slice([0, 0, 0], [1, 2, chunkSizeActual]), window);
+
+      // Update divider with window
+      const newDivider = this.updateTensorSlice(divider, window, start, end);
+
+      // Update result with windowed tar_waves
+      const newResult = this.updateTensorSlice(result, windowedTarWaves, start, end);
+
+      // Clean up
+      windowedTarWaves.dispose();
+
+      return { result: newResult, divider: newDivider };
+    } else {
+      // Create a ones tensor for divider update
+      const ones = tf.ones([1, 2, sliceSize]);
+
+      // Update divider with ones
+      const newDivider = this.updateTensorSlice(divider, ones, start, end);
+
+      // Update result with tar_waves slice
+      const slicedTarWaves = tarWaves.slice([0, 0, 0], [1, 2, sliceSize]);
+      const newResult = this.updateTensorSlice(result, slicedTarWaves, start, end);
+
+      // Clean up
+      ones.dispose();
+      slicedTarWaves.dispose();
+
+      return { result: newResult, divider: newDivider };
+    }
+  }
+
+  /**
+ * Helper function to update a slice of a tensor with new values
+ * Equivalent to: tensor[..., start:end] += values
+ */
+  private updateTensorSlice(tensor: tf.Tensor, values: tf.Tensor, start: number, end: number): tf.Tensor {
+    // Ensure the values tensor has the right size for the slice
+    const sliceSize = end - start;
+    const slicedValues = values.slice([0, 0, 0], [1, 2, sliceSize]);
+
+    // Create padded version of values to match full tensor shape
+    const padded = tf.pad(
+      slicedValues,
+      [
+        [0, 0],                         // No padding on batch dimension
+        [0, 0],                         // No padding on channel dimension
+        [start, tensor.shape[2] - end]  // Pad before and after to match tensor shape
+      ]
+    );
+
+    // Add padded values to original tensor
+    const updated = tensor.add(padded);
+
+    // Clean up intermediates
+    slicedValues.dispose();
+    padded.dispose();
+
+    return updated;
+  }
+
+  /**
    * Run the model on a chunk of audio
    */
-  private async runModel(mixChunk: Float32Array[], isMatchMix: boolean = false): Promise<Float32Array[]> {
+  private async runModel(mixChunk: tf.Tensor3D, isMatchMix: boolean = false): Promise<tf.Tensor[]> {
     if (!this.model || !this.stft) {
       throw new Error('Model or STFT not initialized');
     }
 
     // Apply STFT to the mix chunk
-    this.debug(`Running STFT on the mix. Mix shape: ${mixChunk.length}x${mixChunk[0].length}`);
+    this.debug(`Running STFT on the mix. Mix shape: ${mixChunk.shape}`);
     const spek = this.stft.forward(mixChunk, this.segmentSize);
     this.debug(`STFT applied on mix. Spectrum shape: ${spek.length}x${spek[0].length}x${spek[0][0].length}x${spek[0][0][0].length}`);
 
