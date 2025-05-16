@@ -22,13 +22,19 @@ export class STFT {
     // Create a Hann window tensor for use in the STFT.
     this.hann_window = tf.signal.hannWindow(this.n_fft);
 
-    this.logger.debug(`STFT initialized: n_fft=${n_fft}, hop_length=${hop_length}, dim_f=${dim_f}`);
+    console.debug(`STFT initialized: n_fft=${n_fft}, hop_length=${hop_length}, dim_f=${dim_f}`);
   }
 
-  forward(input_tensor: Float32Array[][]): number[][][][] {
-    // Convert input to tensor
-    let tensor = tf.tensor3d(input_tensor);
+  /**
+   * Python-style call interface for compatibility
+   * In Python, an instance can be called like a function: stft(tensor)
+   */
+  call(tensor: tf.Tensor): tf.Tensor {
+    console.debug('STFT being called with Python-style interface');
+    return this.forward(tensor);
+  }
 
+  forward(tensor: tf.Tensor): tf.Tensor {
     // Extract batch dimensions (all dimensions except the last two which are channel and time).
     const batchShape = tensor.shape.slice(0, -2);
     const batchDimensions = batchShape.length > 0 ? batchShape : [1];
@@ -78,7 +84,7 @@ export class STFT {
       Array(final_output.shape.length - 2).fill(-1).concat([this.dim_f, -1])
     );
 
-    const result = sliced.arraySync() as number[][][][];
+    const result = sliced;
 
     // Clean up tensors
     tensor.dispose();
@@ -89,7 +95,6 @@ export class STFT {
     stacked.dispose();
     permuted_stft_output.dispose();
     final_output.dispose();
-    sliced.dispose();
 
     return result;
   }
@@ -175,9 +180,7 @@ export class STFT {
     return complex_tensor;
   }
 
-  inverse(stft_matrix: number[][][][]): Float32Array[][] {
-    // Convert input to tensor
-    let input_tensor = tf.tensor4d(stft_matrix);
+  inverse(input_tensor: tf.Tensor4D): tf.Tensor {
 
     // Transfer the pre-defined Hann window tensor to the same device as the input tensor.
     const stft_window = this.hann_window;
@@ -226,7 +229,7 @@ export class STFT {
     const output_shape = [...batch_dimensions, 2, -1];
     const final_output = normalized.reshape(output_shape);
 
-    const result = final_output.arraySync() as Float32Array[][];
+    const result = final_output;
 
     // Clean up tensors
     input_tensor.dispose();
@@ -236,7 +239,6 @@ export class STFT {
     outputArray.dispose();
     normArray.dispose();
     normalized.dispose();
-    final_output.dispose();
 
     return result;
   }

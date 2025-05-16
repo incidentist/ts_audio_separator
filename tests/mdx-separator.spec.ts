@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 test.describe('MDX Separator Integration Tests', () => {
-  test('should process real audio file (heard_sound.wav)', async ({ page }) => {
+  test('should process real audio file (nanci.wav)', async ({ page }) => {
     page.on('console', msg => console.log('Browser console:', msg.text()));
     page.on('pageerror', error => console.log('Page error:', error));
 
@@ -17,12 +17,12 @@ test.describe('MDX Separator Integration Tests', () => {
     page.on('response', response => console.log('Response:', response.url(), response.status()));
 
     // Check if the audio file exists
-    const audioPath = join(__dirname, 'fixtures', 'heard_sound.wav');
+    const audioPath = join(__dirname, 'fixtures', 'nanci.wav');
     console.log('Checking for audio file at:', audioPath);
     expect(existsSync(audioPath)).toBe(true);
 
     // Serve the test file
-    await page.route('**/heard_sound.wav', async route => {
+    await page.route('**/nanci.wav', async route => {
       await route.fulfill({ path: audioPath });
     });
 
@@ -82,7 +82,7 @@ test.describe('MDX Separator Integration Tests', () => {
       console.log("Model loaded successfully");
 
       // Test with real audio file
-      const audioUrl = '/heard_sound.wav';
+      const audioUrl = '/nanci.wav';
 
       // Test separate method (which includes prepareMix and normalize)
       let separateResult = null;

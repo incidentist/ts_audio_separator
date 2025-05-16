@@ -250,7 +250,7 @@ export class MDXSeparator extends CommonSeparator {
     this.debug(`Original mix stored. Shape: ${mix.shape}`);
 
     // Initializes a list to store the separated waveforms
-    const tarWaves_: Float32Array[][] = [];
+    // const tarWaves_: tf.Tensor[] = [];
 
     // Handling different chunk sizes and overlaps based on the matching requirement
     let chunkSize: number;
@@ -294,8 +294,8 @@ export class MDXSeparator extends CommonSeparator {
     // Initialize tensors to store results and to account for overlap
     // Shape: [1, 2, timeLength] matching the Python dimensions
     const resultShape = [1, 2, mixLength];
-    const result = tf.zeros(resultShape);     // For accumulating processed chunks
-    const divider = tf.zeros(resultShape);    // For tracking overlap counts
+    let result = tf.zeros(resultShape);     // For accumulating processed chunks
+    let divider = tf.zeros(resultShape);    // For tracking overlap counts
 
     // You could log the shapes for debugging
     this.debug(`Initialized result and divider tensors with shape: ${result.shape}`);
@@ -376,42 +376,48 @@ export class MDXSeparator extends CommonSeparator {
       if (window) window.dispose();
       mixPart.dispose();
     }
-
     // Normalize the results by the divider to account for overlap
-    this.debug('Normalizing result by dividing result by divider.');
-    const tarWaves = result.map((channel, ch) => {
-      const normalized = new Float32Array(channel.length);
-      for (let i = 0; i < channel.length; i++) {
-        normalized[i] = divider[ch][i] !== 0 ? channel[i] / divider[ch][i] : 0;
-      }
-      return normalized;
-    });
+    console.debug('Normalizing result by dividing result by divider.');
+    // Use TensorFlow to divide result by divider
+    const tarWaves = tf.div(result, divider);
+    console.debug(`Normalized tar_waves shape: ${tarWaves.shape}`);
 
-    tarWaves_.push(tarWaves);
+    // Clean up intermediate tensors
+    result.dispose();
+    divider.dispose();
 
-    // Reshape the results to match the original dimensions
-    const tarWavesFlat = tarWaves_.map(batch => {
-      return batch.map(channel =>
-        channel.slice(this.trim, this.trim + mix[0].length)
-      );
-    })[0]; // We only have one batch in this implementation
+    // Trim the tensor to remove padding at the beginning and end
+    console.debug(`Trimming tensor from shape ${tarWaves.shape}`);
+    const trimStart = this.trim;
+    const trimEnd = tarWaves.shape[2] - this.trim;
+    const trimmedTarWaves = tarWaves.slice([0, 0, trimStart], [-1, -1, trimEnd - trimStart]);
+    console.debug(`After trimming: ${trimmedTarWaves.shape}`);
 
-    // Extract the source from the results
-    const source = tarWavesFlat;
-    this.debug(`Concatenated tar_waves. Shape: ${source.length}x${source[0].length}`);
+    // Ensure we don't exceed the original mix length
+    const finalLength = Math.min(mixLength, trimmedTarWaves.shape[2]);
+    const finalTarWaves = trimmedTarWaves.slice([0, 0, 0], [-1, -1, finalLength]);
+    console.debug(`After slicing to mix length ${mixLength}: ${finalTarWaves.shape}`);
+
+    // Clean up intermediate tensor
+    trimmedTarWaves.dispose();
+    tarWaves.dispose();
+
+    // In Python this is source = tar_waves[:, 0:None], which keeps all data
+    const source = finalTarWaves;
+    console.debug(`Final source shape: ${source.shape}`);
 
     // Apply compensation if not matching the mix
     if (!isMatchMix) {
-      for (let ch = 0; ch < source.length; ch++) {
-        for (let i = 0; i < source[ch].length; i++) {
-          source[ch][i] *= this.compensate;
-        }
-      }
-      this.debug('Compensate multiplier applied to non-match mix.');
-    }
+      console.debug(`Applying compensation factor: ${this.compensate}`);
+      const compensatedSource = source.mul(this.compensate);
+      source.dispose();
 
-    this.debug('Demixing process completed.');
-    return source;
+      console.debug('Demixing process completed.');
+      return compensatedSource;
+    } else {
+      console.debug('Demixing process completed.');
+      return source;
+    }
   }
 
   /**
@@ -491,159 +497,95 @@ export class MDXSeparator extends CommonSeparator {
 
     return updated;
   }
-
   /**
-   * Run the model on a chunk of audio
+   * Process the input mix through the model to separate sources
+   * @param mix Input tensor of shape [1, 2, chunkSize]
+   * @param isMatchMix Whether to match the mix directly or apply model
+   * @returns Processed audio tensor of shape [1, 2, chunkSize]
    */
-  private async runModel(mixChunk: tf.Tensor3D, isMatchMix: boolean = false): Promise<tf.Tensor[]> {
-    if (!this.model || !this.stft) {
-      throw new Error('Model or STFT not initialized');
-    }
+  private async runModel(mix: tf.Tensor, isMatchMix: boolean = false): Promise<tf.Tensor> {
+    // Apply STFT to the mix
+    this.debug(`Running STFT on the mix. Mix shape: ${mix.shape}`);
+    const spek = this.stft.forward(mix);
+    this.debug(`STFT applied on mix. Spectrum shape: ${spek.shape}`);
 
-    // Apply STFT to the mix chunk
-    this.debug(`Running STFT on the mix. Mix shape: ${mixChunk.shape}`);
-    const spek = this.stft.forward(mixChunk, this.segmentSize);
-    this.debug(`STFT applied on mix. Spectrum shape: ${spek.length}x${spek[0].length}x${spek[0][0].length}x${spek[0][0][0].length}`);
+    // Zero out the first 3 bins of the spectrum to reduce low-frequency noise
+    // We'll use tf.tidy to manage memory for these operations
+    const spekZeroed = tf.tidy(() => {
+      // Get shape for masking
+      const [batchSize, channels, freqBins, timeFrames] = spek.shape;
 
-    // Zero out the first 3 bins of the spectrum
-    for (let ch = 0; ch < spek.length; ch++) {
-      for (let bin = 0; bin < 3; bin++) {
-        for (let frame = 0; frame < spek[ch][bin].length; frame++) {
-          spek[ch][bin][frame][0] = 0; // Real part
-          spek[ch][bin][frame][1] = 0; // Imaginary part
-        }
-      }
-    }
+      // Create mask with zeros for first 3 bins
+      const freqMask = tf.concat([
+        tf.zeros([3]),                  // First 3 bins are zero
+        tf.ones([freqBins - 3])         // Rest are ones
+      ], 0);
 
-    let specPred: number[][][][] | Float32Array[][][][] = spek;
+      // Reshape mask and tile to match spek dimensions
+      const reshapedMask = freqMask.reshape([1, 1, freqBins, 1])
+        .tile([batchSize, channels, 1, timeFrames]);
+
+      // Apply mask to zero out bins
+      return tf.mul(spek, reshapedMask);
+    });
+
+    let specPred: tf.Tensor;
 
     if (isMatchMix) {
-      this.debug('isMatchMix: spectrum prediction obtained directly from STFT output.');
+      // In match_mix mode, use the STFT output directly
+      specPred = spekZeroed;
+      this.debug("isMatchMix: spectrum prediction obtained directly from STFT output.");
     } else {
-      // Prepare input tensor for ONNX model
-      // Convert complex spectrogram to real tensor format expected by the model
-      const batchSize = 1; // Processing one stereo pair at a time
-      const frames = spek[0][0].length;
-      this.debug(`Preparing model input. Frames: ${frames}, Expected: ${this.segmentSize}`);
-
-      if (frames !== this.segmentSize) {
-        this.debug(`Frame count mismatch: got ${frames}, expected ${this.segmentSize}`);
-      }
-
-      const inputTensor = this.prepareModelInput(spek);
-
       if (this.enableDenoise) {
-        // Run model on negative spectrum
-        const negInputTensor = inputTensor.map(val => -val);
-        const negFeeds = { input: new ort.Tensor('float32', negInputTensor, [batchSize, 4, this.dimF, frames]) };
-        const negResults = await this.model.run(negFeeds);
-        const negOutput = negResults.output.data as Float32Array;
-
-        // Run model on positive spectrum
-        const posFeeds = { input: new ort.Tensor('float32', inputTensor, [batchSize, 4, this.dimF, frames]) };
-        const posResults = await this.model.run(posFeeds);
-        const posOutput = posResults.output.data as Float32Array;
-
-        // Combine results
-        const combinedOutput = new Float32Array(posOutput.length);
-        for (let i = 0; i < combinedOutput.length; i++) {
-          combinedOutput[i] = (negOutput[i] * -0.5) + (posOutput[i] * 0.5);
-        }
-
-        specPred = this.reshapeModelOutput(combinedOutput, spek);
-        this.debug('Model run on both negative and positive spectrums for denoising.');
+        // Denoising not implemented yet
+        throw new Error("Denoising mode is not yet implemented");
       } else {
-        const feeds = { input: new ort.Tensor('float32', inputTensor, [batchSize, 4, this.dimF, frames]) };
-        this.debug(`Creating tensor with shape: [${batchSize}, 4, ${this.dimF}, ${frames}]`);
-        const results = await this.model.run(feeds);
+        // Standard model run
+        const inputTensor = await this.tensorToOnnxFormat(spekZeroed);
+        const feeds = { input: new ort.Tensor('float32', inputTensor.data as Float32Array, inputTensor.dims) };
+        const results = await this.model!.run(feeds);
         const output = results.output.data as Float32Array;
-        specPred = this.reshapeModelOutput(output, spek);
-        this.debug('Model run on the spectrum without denoising.');
+
+        // Convert output back to TF tensor format
+        specPred = this.onnxOutputToTensor(output, spekZeroed.shape);
+        this.debug("Model run on the spectrum without denoising.");
       }
     }
 
     // Apply inverse STFT to convert back to time domain
     const result = this.stft.inverse(specPred);
-    this.debug(`Inverse STFT applied. Returning result with shape: ${result.length}x${result[0].length}`);
+    this.debug(`Inverse STFT applied. Returning result with shape: ${result.shape}`);
+
+    // Clean up tensors
+    spek.dispose();
+    if (specPred !== spekZeroed) {
+      specPred.dispose();
+    }
+    spekZeroed.dispose();
 
     return result;
   }
 
   /**
-   * Prepare model input from complex spectrogram
+   * Convert TensorFlow.js tensor to ONNX format
    */
-  private prepareModelInput(spek: Float32Array[][][][]): Float32Array {
-    const channels = spek.length;
-    const freqBins = spek[0].length;
-    const frames = spek[0][0].length;
+  private async tensorToOnnxFormat(tensor: tf.Tensor): Promise<ort.Tensor> {
+    // Get tensor shape for ONNX
+    const shape = tensor.shape;
 
-    // Model expects real and imaginary parts as separate channels
-    // Input shape: [batch, channels * 2, freq_bins, frames]
-    const outputSize = channels * 2 * freqBins * frames;
-    const output = new Float32Array(outputSize);
+    // Convert to typed array (Float32Array)
+    const data = await tensor.data() as Float32Array;
 
-    let idx = 0;
-    // Real parts
-    for (let ch = 0; ch < channels; ch++) {
-      for (let f = 0; f < freqBins; f++) {
-        for (let t = 0; t < frames; t++) {
-          output[idx++] = spek[ch][f][t][0];
-        }
-      }
-    }
-    // Imaginary parts
-    for (let ch = 0; ch < channels; ch++) {
-      for (let f = 0; f < freqBins; f++) {
-        for (let t = 0; t < frames; t++) {
-          output[idx++] = spek[ch][f][t][1];
-        }
-      }
-    }
-
-    return output;
+    // Create and return ONNX tensor with same shape
+    return new ort.Tensor('float32', data, shape);
   }
 
   /**
-   * Reshape model output back to complex spectrogram format
+   * Convert ONNX output back to TensorFlow.js tensor
    */
-  private reshapeModelOutput(output: Float32Array, originalSpek: Float32Array[][][][]): number[][][][] {
-    const channels = originalSpek.length;
-    const freqBins = originalSpek[0].length;
-    const frames = originalSpek[0][0].length;
-
-    const result: number[][][][] = [];
-
-    for (let ch = 0; ch < channels; ch++) {
-      const channelData: number[][][] = [];
-      for (let f = 0; f < freqBins; f++) {
-        const freqData: number[][] = [];
-        for (let t = 0; t < frames; t++) {
-          freqData.push([0, 0]);
-        }
-        channelData.push(freqData);
-      }
-      result.push(channelData);
-    }
-
-    let idx = 0;
-    // Real parts
-    for (let ch = 0; ch < channels; ch++) {
-      for (let f = 0; f < freqBins; f++) {
-        for (let t = 0; t < frames; t++) {
-          result[ch][f][t][0] = output[idx++];
-        }
-      }
-    }
-    // Imaginary parts
-    for (let ch = 0; ch < channels; ch++) {
-      for (let f = 0; f < freqBins; f++) {
-        for (let t = 0; t < frames; t++) {
-          result[ch][f][t][1] = output[idx++];
-        }
-      }
-    }
-
-    return result;
+  private onnxOutputToTensor(output: Float32Array, shape: number[]): tf.Tensor {
+    // Create tensor with the same shape as the original
+    return tf.tensor(Array.from(output), shape);
   }
 
   /**
