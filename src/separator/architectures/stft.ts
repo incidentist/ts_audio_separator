@@ -36,275 +36,418 @@ export class STFT {
 
   // input: [1, 2, length]
   forward(tensor: tf.Tensor): tf.Tensor {
-    // Perform the Short-Time Fourier Transform (STFT)
-    console.debug(`Input tensor shape: ${tensor.shape}`);
+    console.debug(`STFT forward input tensor shape: ${tensor.shape}`);
 
-    // For a batched input [batch, channels, time], we need to process each batch+channel separately
-    const batchSize = tensor.shape.length > 2 ? tensor.shape[0] : 1;
-    const channelCount = tensor.shape.length > 2 ? tensor.shape[1] : tensor.shape[0];
-    const timeLength = tensor.shape.length > 2 ? tensor.shape[2] : tensor.shape[1];
+    // Extract batch dimensions (all dimensions except the last two which are channel and time).
+    const batchShape = tensor.shape.slice(0, -2);
+    const batchDimensions = batchShape.length > 0 ? batchShape : [1];
 
-    console.debug(`Parsed dimensions: batch=${batchSize}, channels=${channelCount}, time=${timeLength}`);
+    // Extract channel and time dimensions (last two dimensions of the tensor).
+    const channelDim = tensor.shape[tensor.shape.length - 2];
+    const timeDim = tensor.shape[tensor.shape.length - 1];
 
-    // Process each batch and channel separately
-    const outputs = [];
-    for (let b = 0; b < batchSize; b++) {
-      const batchOutputs = [];
-      for (let ch = 0; ch < channelCount; ch++) {
-        // Extract this single channel as a TRUE 1D tensor
-        let channelData;
-        if (tensor.shape.length > 2) {
-          // For batched input: [batch, channels, time]
-          channelData = tensor.slice([b, ch, 0], [1, 1, -1]).reshape([timeLength]);
-        } else {
-          // For non-batched input: [channels, time]
-          channelData = tensor.slice([ch, 0], [1, -1]).reshape([timeLength]);
-        }
+    console.debug(`Input dimensions: batch=${batchDimensions}, channels=${channelDim}, time=${timeDim}`);
 
-        console.debug(`Batch ${b}, Channel ${ch} data shape: ${channelData.shape}`);
+    // Reshape the tensor to merge batch and channel dimensions for STFT processing.
+    const reshapedTensor = tensor.reshape([-1, timeDim]);
+    console.debug(`Reshaped tensor: ${reshapedTensor.shape}`);
 
-        // Manual centering like PyTorch's center=True
-        const paddingSize = Math.floor(this.nFft / 2);
-        const paddedData = tf.pad(channelData, [[paddingSize, paddingSize]], 'reflect');
-        console.debug(`Padded data shape: ${paddedData.shape}`);
+    // Get STFT result in PyTorch format
+    const stftOutput = this.torchStyleStft(
+      reshapedTensor,
+      this.nFft,
+      this.hopLength,
+      this.hannWindow,
+      true  // center=true to match PyTorch
+    );
 
-        // Apply STFT - with the TRUE 1D tensor (no batch dimension)
-        const stftOutput = tf.signal.stft(
-          paddedData,
-          this.nFft,
-          this.hopLength,
-          this.nFft,
-          () => this.hannWindow
-        );
+    console.debug(`Raw STFT output shape: ${stftOutput.shape}`);
 
-        console.debug(`STFT output shape for batch ${b}, channel ${ch}: ${stftOutput.shape}`);
+    // Rearrange the dimensions just like in the Python code
+    // From: [batch*channels, freq_bins, time_frames, 2] 
+    // To: [batch*channels, 2, freq_bins, time_frames]
+    const permutedStftOutput = tf.transpose(stftOutput, [0, 3, 1, 2]);
+    console.debug(`Permuted STFT output shape: ${permutedStftOutput.shape}`);
 
-        // Convert complex output to real/imag pair
-        const realPart = tf.real(stftOutput);
-        const imagPart = tf.imag(stftOutput);
+    // Now reshape to restore original batch and channel dimensions
+    // From: [batch*channels, 2, freq_bins, time_frames]
+    // First: [...batch_dimensions, channel_dim, 2, freq_bins, time_frames]
+    // Then: [...batch_dimensions, channel_dim*2, freq_bins, time_frames]
 
-        // Stack real and imaginary parts as the last dimension
-        // Result shape will be [freqBins, frames, 2]
-        const complexData = tf.stack([realPart, imagPart], -1);
+    // Calculate the new shape dimensions
+    const freqBins = permutedStftOutput.shape[2];
+    const timeFrames = permutedStftOutput.shape[3];
 
-        // Save this channel's output
-        batchOutputs.push(complexData);
+    // First reshape to separate batch and channel dimensions
+    const intermediateShape = [...batchDimensions, channelDim, 2, freqBins, timeFrames];
+    const intermediate = permutedStftOutput.reshape(intermediateShape);
+    console.debug(`Intermediate reshape: ${intermediate.shape}`);
 
-        // Clean up
-        channelData.dispose();
-        paddedData.dispose();
-        stftOutput.dispose();
-        realPart.dispose();
-        imagPart.dispose();
-      }
+    // Second reshape to merge channel and complex dimensions
+    const finalShape = [...batchDimensions, channelDim * 2, freqBins, timeFrames];
+    const finalOutput = intermediate.reshape(finalShape);
+    console.debug(`Final output shape: ${finalOutput.shape}`);
 
-      // Stack channels for this batch
-      // From: list of [freqBins, frames, 2]
-      // To: [channels, freqBins, frames, 2]
-      const batchStacked = tf.stack(batchOutputs, 0);
-      outputs.push(batchStacked);
+    // Slice to retain only the required frequency dimension (dim_f)
+    const freqDimIndex = finalOutput.shape.length - 2;
+    const sliceStart = Array(finalOutput.shape.length).fill(0);
+    const sliceSize = Array(finalOutput.shape.length).fill(-1);
+    sliceSize[freqDimIndex] = Math.min(this.dimF, finalOutput.shape[freqDimIndex]);
 
-      // Clean up
-      batchOutputs.forEach(c => c.dispose());
-    }
-
-    // Stack all batches
-    // From: list of [channels, freqBins, frames, 2]
-    // To: [batch, channels, freqBins, frames, 2]
-    let result;
-    if (batchSize > 1) {
-      result = tf.stack(outputs, 0);
-    } else {
-      result = outputs[0]; // Just use the single batch directly
-    }
-    console.debug(`Stacked result shape: ${result.shape}`);
-
-    // Rearrange dimensions to match expected output
-    // From: [batch, channels, freqBins, frames, 2]
-    // To: [batch, channels, 2, freqBins, frames]
-    const permuteDims = result.shape.length === 5
-      ? [0, 1, 4, 2, 3]  // With batch dimension
-      : [0, 3, 1, 2];    // Without batch dimension
-
-    const permuted = tf.transpose(result, permuteDims);
-    console.debug(`Permuted shape: ${permuted.shape}`);
-
-    // Merge channels and complex dimensions
-    // From: [batch, channels, 2, freqBins, frames]
-    // To: [batch, channels*2, freqBins, frames]
-    let reshapeSize;
-    if (result.shape.length === 5) {
-      reshapeSize = [batchSize, channelCount * 2, permuted.shape[3], permuted.shape[4]];
-    } else {
-      reshapeSize = [channelCount * 2, permuted.shape[2], permuted.shape[3]];
-    }
-    const reshaped = permuted.reshape(reshapeSize);
-    console.debug(`Reshaped: ${reshaped.shape}`);
-
-    // Slice to requested frequency dimension
-    const freqDimIndex = result.shape.length === 5 ? 2 : 1;
-    const freqStart = 0;
-    const freqSize = Math.min(this.dimF, reshaped.shape[freqDimIndex]);
-
-    const freqSliceStart = Array(reshaped.shape.length).fill(0);
-    const freqSliceSize = Array(reshaped.shape.length).fill(-1);
-    freqSliceStart[freqDimIndex] = freqStart;
-    freqSliceSize[freqDimIndex] = freqSize;
-
-    const sliced = reshaped.slice(freqSliceStart, freqSliceSize);
-    console.debug(`Final sliced shape: ${sliced.shape}`);
-
-    // Clean up
-    tensor.dispose();
-    result.dispose();
-    permuted.dispose();
-    reshaped.dispose();
-    outputs.forEach(o => o.dispose());
-
-    return sliced;
-  }
-
-  private pad_frequency_dimension(
-    input_tensor: tf.Tensor,
-    batch_dimensions: number[],
-    channel_dim: number,
-    freq_dim: number,
-    time_dim: number,
-    num_freq_bins: number
-  ): tf.Tensor {
-    /**
-     * Adds zero padding to the frequency dimension of the input tensor.
-     */
-    // Create a padding tensor for the frequency dimension
-    const padding_shape = [...batch_dimensions, channel_dim, num_freq_bins - freq_dim, time_dim];
-    const freq_padding = tf.zeros(padding_shape);
-
-    // Concatenate the padding to the input tensor along the frequency dimension.
-    const padded_tensor = tf.concat([input_tensor, freq_padding], input_tensor.shape.length - 2);
-
-    freq_padding.dispose();
-
-    return padded_tensor;
-  }
-
-  private calculate_inverse_dimensions(input_tensor: tf.Tensor): [number[], number, number, number, number] {
-    // Extract batch dimensions and frequency-time dimensions.
-    const batch_dimensions = input_tensor.shape.slice(0, -3);
-    const channel_dim = input_tensor.shape[input_tensor.shape.length - 3];
-    const freq_dim = input_tensor.shape[input_tensor.shape.length - 2];
-    const time_dim = input_tensor.shape[input_tensor.shape.length - 1];
-
-    // Calculate the number of frequency bins for the inverse STFT.
-    const num_freq_bins = Math.floor(this.n_fft / 2) + 1;
-
-    return [batch_dimensions, channel_dim, freq_dim, time_dim, num_freq_bins];
-  }
-
-  private prepare_for_istft(
-    padded_tensor: tf.Tensor,
-    batch_dimensions: number[],
-    channel_dim: number,
-    num_freq_bins: number,
-    time_dim: number
-  ): tf.Tensor {
-    /**
-     * Prepares the tensor for Inverse Short-Time Fourier Transform (ISTFT) by reshaping
-     * and creating a complex tensor from the real and imaginary parts.
-     */
-    // Reshape the tensor to separate real and imaginary parts and prepare for ISTFT.
-    const reshaped_shape = [...batch_dimensions, Math.floor(channel_dim / 2), 2, num_freq_bins, time_dim];
-    const reshaped_tensor = padded_tensor.reshape(reshaped_shape);
-
-    // Flatten batch dimensions and rearrange for ISTFT.
-    const flattened_tensor = reshaped_tensor.reshape([-1, 2, num_freq_bins, time_dim]);
-
-    // Rearrange the dimensions of the tensor to bring the frequency dimension forward.
-    const permuted_tensor = flattened_tensor.transpose([0, 2, 3, 1]);
-
-    // Extract real and imaginary parts
-    const real = permuted_tensor.slice(
-      [0, 0, 0, 0],
-      [-1, -1, -1, 1]
-    ).squeeze([3]);
-
-    const imag = permuted_tensor.slice(
-      [0, 0, 0, 1],
-      [-1, -1, -1, 1]
-    ).squeeze([3]);
-
-    // Combine real and imaginary parts into a complex tensor.
-    const complex_tensor = tf.complex(real, imag);
-
-    // Clean up intermediate tensors
-    reshaped_tensor.dispose();
-    flattened_tensor.dispose();
-    permuted_tensor.dispose();
-    real.dispose();
-    imag.dispose();
-
-    return complex_tensor;
-  }
-
-  inverse(input_tensor: tf.Tensor4D): tf.Tensor {
-
-    // Transfer the pre-defined Hann window tensor to the same device as the input tensor.
-    const stft_window = this.hannWindow;
-
-    const [batch_dimensions, channel_dim, freq_dim, time_dim, num_freq_bins] = this.calculate_inverse_dimensions(input_tensor);
-
-    const padded_tensor = this.pad_frequency_dimension(input_tensor, batch_dimensions, channel_dim, freq_dim, time_dim, num_freq_bins);
-
-    const complex_tensor = this.prepare_for_istft(padded_tensor, batch_dimensions, channel_dim, num_freq_bins, time_dim);
-
-    // Perform the Inverse Short-Time Fourier Transform (ISTFT).
-    // Note: TensorFlow.js doesn't have istft, so we need to use irfft and implement overlap-add
-    const time_signal = tf.signal.irfft(complex_tensor);
-
-    // Apply overlap-add reconstruction
-    const num_frames = time_signal.shape[1];
-    const frame_length = time_signal.shape[2];
-    const num_samples = (num_frames - 1) * this.hopLength + frame_length;
-
-    // Initialize output buffer
-    const batch_channel_size = time_signal.shape[0];
-    const outputBuffer = tf.buffer([batch_channel_size, num_samples]);
-    const windowArray = stft_window.arraySync() as number[];
-    const normBuffer = tf.buffer([batch_channel_size, num_samples]);
-
-    const timeSignalArray = time_signal.arraySync() as number[][][];
-
-    // Perform overlap-add
-    for (let bc = 0; bc < batch_channel_size; bc++) {
-      for (let t = 0; t < num_frames; t++) {
-        const offset = t * this.hopLength;
-        for (let i = 0; i < frame_length && offset + i < num_samples; i++) {
-          const value = timeSignalArray[bc][t][i] * windowArray[i];
-          outputBuffer.set(outputBuffer.get(bc, offset + i) + value, bc, offset + i);
-          normBuffer.set(normBuffer.get(bc, offset + i) + windowArray[i] * windowArray[i], bc, offset + i);
-        }
-      }
-    }
-
-    // Normalize
-    const outputArray = outputBuffer.toTensor();
-    const normArray = normBuffer.toTensor();
-    const normalized = outputArray.div(normArray.add(1e-8));
-
-    // Reshape ISTFT result to restore original batch and channel dimensions.
-    const output_shape = [...batch_dimensions, 2, -1];
-    const final_output = normalized.reshape(output_shape);
-
-    const result = final_output;
+    const slicedOutput = finalOutput.slice(sliceStart, sliceSize);
+    console.debug(`Sliced output shape: ${slicedOutput.shape}`);
 
     // Clean up tensors
-    input_tensor.dispose();
-    padded_tensor.dispose();
-    complex_tensor.dispose();
-    time_signal.dispose();
-    outputArray.dispose();
-    normArray.dispose();
-    normalized.dispose();
+    reshapedTensor.dispose();
+    stftOutput.dispose();
+    permutedStftOutput.dispose();
+    intermediate.dispose();
+    finalOutput.dispose();
 
-    return result;
+    return slicedOutput;
+  }
+
+  private torchStyleStft(
+    tensor: tf.Tensor,
+    nFft: number,
+    hopLength: number,
+    window: tf.Tensor,
+    center: boolean = true
+  ): tf.Tensor {
+    console.debug(`Torch-style STFT input shape: ${tensor.shape}`);
+
+    return tf.tidy(() => {
+      // Get tensor dimensions
+      const shape = tensor.shape;
+      const rank = shape.length;
+
+      // Extract dimensions
+      const timeLength = shape[rank - 1];
+      const channelDim = shape[rank - 2];
+      const batchShape = shape.slice(0, -2);
+
+      // Reshape to flatten ALL dimensions except time
+      // This is equivalent to reshaped_tensor = input_tensor.reshape([-1, time_dim])
+      const flatTensor = tensor.reshape([-1, timeLength]);
+      console.debug(`Flattened tensor shape: ${flatTensor.shape}`);
+
+      // Process each flattened batch*channel
+      const batchChannelSize = flatTensor.shape[0];
+      const results = [];
+
+      for (let bc = 0; bc < batchChannelSize; bc++) {
+        // Extract this batch*channel as a 1D tensor
+        const signal = flatTensor.slice([bc, 0], [1, -1]).reshape([timeLength]);
+
+        // Apply padding if center=true (like PyTorch)
+        let paddedSignal = signal;
+        if (center) {
+          const padSize = Math.floor(nFft / 2);
+          paddedSignal = tf.pad(signal, [[padSize, padSize]], 'reflect');
+        }
+
+        // Apply STFT
+        const stftResult = tf.signal.stft(
+          paddedSignal,
+          nFft,
+          hopLength,
+          nFft,
+          () => window
+        );
+
+        // Extract real and imaginary components
+        const real = tf.real(stftResult);
+        const imag = tf.imag(stftResult);
+
+        // TF returns [time_frames, freq_bins], but PyTorch expects [freq_bins, time_frames]
+        // Transpose to match PyTorch's dimension order
+        const realTransposed = tf.transpose(real);
+        const imagTransposed = tf.transpose(imag);
+
+        // Stack real and imag as the last dimension (matches PyTorch's format)
+        // This gives us [freq_bins, time_frames, 2]
+        const complexStacked = tf.stack([realTransposed, imagTransposed], -1);
+        results.push(complexStacked);
+
+        // Clean up
+        signal.dispose();
+        paddedSignal.dispose();
+        stftResult.dispose();
+        real.dispose();
+        imag.dispose();
+        realTransposed.dispose();
+        imagTransposed.dispose();
+      }
+
+      // Stack all results
+      // This should give [batch*channels, freq_bins, time_frames, 2]
+      const stacked = tf.stack(results, 0);
+      console.debug(`Final stacked STFT result: ${stacked.shape}`);
+
+      return stacked;
+    });
+  }
+
+
+  // Helper methods for inverse STFT
+  private padFrequencyDimension(
+    inputTensor: tf.Tensor,
+    batchDimensions: number[],
+    channelDim: number,
+    freqDim: number,
+    timeDim: number,
+    numFreqBins: number
+  ): tf.Tensor {
+    console.debug(`Padding frequency dimension from ${freqDim} to ${numFreqBins}`);
+
+    // Create padding tensor for frequency dimension
+    const freqPadding = tf.zeros([...batchDimensions, channelDim, numFreqBins - freqDim, timeDim]);
+
+    // Concatenate along frequency dimension (-2)
+    const padded = tf.concat([inputTensor, freqPadding], inputTensor.shape.length - 2);
+
+    // Clean up
+    freqPadding.dispose();
+
+    return padded;
+  }
+
+  //
+  // INVERSE
+  //
+
+  /**
+ * PyTorch-compatible ISTFT implementation
+ * Matches the behavior of torch.istft
+ * Input: (batches, freqBins, timeFrames)
+ * Output shape: (batches, channels, length)
+ */
+  /**
+ * Inverse Short-Time Fourier Transform implementation
+ * Matches the behavior of torch.istft
+ * 
+ * @param complexTensor Complex tensor of shape [batch, freq_bins, time_frames]
+ * @param nFft FFT size
+ * @param hopLength Hop length between frames
+ * @param window Window function tensor of length nFft
+ * @param center Whether the input was padded for centered frames
+ * @returns Time domain signal of shape [batch, signal_length]
+ */
+  private istft(
+    complexTensor: tf.Tensor, // [batch, freq, time]
+    nFft: number,
+    hopLength: number,
+    window: tf.Tensor,
+    center: boolean = true
+  ): tf.Tensor {
+    console.debug(`ISTFT input shape: ${complexTensor.shape}`);
+
+    return tf.tidy(() => {
+      const batchSize = complexTensor.shape[0];
+      const freqBins = complexTensor.shape[1];
+      const timeFrames = complexTensor.shape[2];
+      const results = [];
+
+      // Process each channel separately
+      for (let b = 0; b < batchSize; b++) {
+        // Get this channel
+        const channelTensor = complexTensor.slice([b, 0, 0], [1, -1, -1]).squeeze([0]);
+        console.debug(`Processing channel ${b}, shape: ${channelTensor.shape}`);
+
+        // Split real and imaginary parts
+        const realPart = tf.real(channelTensor);
+        const imagPart = tf.imag(channelTensor);
+
+        // Create a proper complex tensor for one channel
+        const channelComplex = tf.complex(realPart, imagPart);
+
+        // Apply IRFFT to this single channel
+        console.debug(`IRFFT input shape for channel ${b}: ${channelComplex.shape}`);
+
+        const frames = tf.spectral.irfft(channelComplex);
+        console.debug(`IRFFT output shape for channel ${b}: ${frames.shape}`);
+
+        // Apply window function and perform overlap-add
+        const frameCount = frames.shape[0];
+        const frameLength = frames.shape[1];
+
+        // Reshape window for broadcasting
+        const windowTensor = window.slice([0], [frameLength]);
+        const windowedFrames = tf.mul(frames, windowTensor);
+
+        // Manual overlap-add reconstruction
+        const outputLength = (timeFrames - 1) * hopLength + nFft;
+        const outputBuffer = new Float32Array(outputLength).fill(0);
+        const normBuffer = new Float32Array(outputLength).fill(0);
+
+        // Get data as JavaScript arrays
+        const framesData = windowedFrames.arraySync() as number[][];
+        const windowData = windowTensor.arraySync() as number[];
+
+        // Perform overlap-add
+        for (let t = 0; t < frameCount; t++) {
+          const offset = t * hopLength;
+          for (let i = 0; i < frameLength; i++) {
+            if (offset + i < outputLength) {
+              outputBuffer[offset + i] += framesData[t][i];
+              normBuffer[offset + i] += windowData[i] * windowData[i];
+            }
+          }
+        }
+
+        // Normalize
+        for (let i = 0; i < outputLength; i++) {
+          if (normBuffer[i] > 1e-8) {
+            outputBuffer[i] /= normBuffer[i];
+          }
+        }
+
+        // Remove center padding
+        let resultBuffer = outputBuffer;
+        if (center) {
+          const padSize = Math.floor(nFft / 2);
+          if (outputLength > 2 * padSize) {
+            resultBuffer = outputBuffer.slice(padSize, outputLength - padSize);
+          }
+        }
+
+        // Convert to tensor
+        results.push(tf.tensor1d(resultBuffer));
+
+        // Clean up
+        realPart.dispose();
+        imagPart.dispose();
+        channelComplex.dispose();
+        frames.dispose();
+        windowedFrames.dispose();
+        windowTensor.dispose();
+      }
+
+      // Stack all channels
+      return tf.stack(results);
+    });
+  }
+
+  private calculateInverseDimensions(inputTensor: tf.Tensor): [number[], number, number, number, number] {
+    // Extract batch dimensions and frequency-time dimensions
+    const shape = inputTensor.shape;
+    const rank = shape.length;
+
+    // Last 3 dimensions are channel, freq, time
+    const batchDimensions = shape.slice(0, rank - 3);
+    const channelDim = shape[rank - 3];
+    const freqDim = shape[rank - 2];
+    const timeDim = shape[rank - 1];
+
+    // Calculate number of frequency bins for inverse STFT
+    const numFreqBins = Math.floor(this.nFft / 2) + 1;
+
+    return [batchDimensions, channelDim, freqDim, timeDim, numFreqBins];
+  }
+
+
+  private prepareForIstft(
+    paddedTensor: tf.Tensor,
+    batchDimensions: number[],
+    channelDim: number,
+    numFreqBins: number,
+    timeDim: number
+  ): tf.Tensor {
+    console.debug(`Preparing for ISTFT with shape: ${paddedTensor.shape}`);
+
+    // Reshape to separate real and imaginary parts
+    // From: [...batchDimensions, channelDim, numFreqBins, timeDim]
+    // To: [...batchDimensions, channelDim/2, 2, numFreqBins, timeDim]
+    const intermediateDims = [...batchDimensions, channelDim / 2, 2, numFreqBins, timeDim];
+    const reshapedTensor = paddedTensor.reshape(intermediateDims);
+
+    // Flatten batch dimensions
+    // From: [...batchDimensions, channelDim/2, 2, numFreqBins, timeDim]
+    // To: [batchSize*channelDim/2, 2, numFreqBins, timeDim]
+    const batchSize = batchDimensions.length === 0 ? 1 :
+      batchDimensions.reduce((a, b) => a * b, 1);
+    const flattenedTensor = reshapedTensor.reshape([batchSize * channelDim / 2, 2, numFreqBins, timeDim]);
+
+    // Permute dimensions to match PyTorch format for ISTFT
+    // From: [batchSize*channelDim/2, 2, numFreqBins, timeDim]
+    // To: [batchSize*channelDim/2, numFreqBins, timeDim, 2]
+    const permutedTensor = flattenedTensor.transpose([0, 2, 3, 1]);
+
+    // Extract real and imaginary parts
+    const realPart = permutedTensor.slice([0, 0, 0, 0], [-1, -1, -1, 1]).squeeze([-1]);
+    const imagPart = permutedTensor.slice([0, 0, 0, 1], [-1, -1, -1, 1]).squeeze([-1]);
+
+    // Create a proper TF complex tensor
+    const complexTensor = tf.complex(realPart, imagPart);
+
+    // Clean up intermediate tensors
+    reshapedTensor.dispose();
+    flattenedTensor.dispose();
+    permutedTensor.dispose();
+    realPart.dispose();
+    imagPart.dispose();
+
+    return complexTensor;
+  }
+
+  inverse(inputTensor: tf.Tensor): tf.Tensor {
+    console.debug(`STFT inverse input tensor shape: ${inputTensor.shape}`);
+
+    // Calculate dimensions
+    const [batchDimensions, channelDim, freqDim, timeDim, numFreqBins] =
+      this.calculateInverseDimensions(inputTensor);
+
+    console.debug(`Dimensions: batch=${batchDimensions}, channels=${channelDim}, freq=${freqDim}, time=${timeDim}, numFreqBins=${numFreqBins}`);
+
+    // Pad frequency dimension if needed
+    const paddedTensor = this.padFrequencyDimension(
+      inputTensor, batchDimensions, channelDim, freqDim, timeDim, numFreqBins
+    );
+
+    console.debug(`Padded tensor shape: ${paddedTensor.shape}`);
+
+    // Prepare for ISTFT
+    const complexTensor = this.prepareForIstft(
+      paddedTensor, batchDimensions, channelDim, numFreqBins, timeDim
+    );
+
+    console.debug(`Complex tensor shape: ${complexTensor.shape}`);
+
+    // Perform ISTFT
+    const istftResult = this.istft(
+      complexTensor,
+      this.nFft,
+      this.hopLength,
+      this.hannWindow,
+      true  // center=true to match PyTorch
+    );
+
+    console.debug(`ISTFT result shape: ${istftResult.shape}`);
+
+    // Reshape to restore original batch and channel dimensions
+    // From: [batchSize*channelDim/2, timeLength]
+    // To: [...batchDimensions, 2, timeLength]
+    const batchSize = batchDimensions.length === 0 ? 1 :
+      batchDimensions.reduce((a, b) => a * b, 1);
+
+    // Check if reshaping is needed
+    let finalOutput = istftResult;
+
+    if (istftResult.shape[0] === batchSize * channelDim / 2) {
+      // If we have multiple batches/channels, reshape
+      const reshapeSize = [...batchDimensions, 2, istftResult.shape[1]];
+      finalOutput = istftResult.reshape(reshapeSize);
+    }
+
+    console.debug(`Final output shape: ${finalOutput.shape}`);
+
+    // Clean up
+    paddedTensor.dispose();
+    complexTensor.dispose();
+    if (finalOutput !== istftResult) {
+      istftResult.dispose();
+    }
+
+    return finalOutput;
   }
 }
