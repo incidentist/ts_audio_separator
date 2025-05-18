@@ -234,125 +234,107 @@ export class STFT {
  * @returns Time domain signal of shape [batch, signal_length]
  */
   private istft(
-    complexTensor: tf.Tensor, // [batch, freq, time]
+    realPart: tf.Tensor, // [batch, freq, time]
+    imagPart: tf.Tensor, // [batch, freq, time]
     nFft: number,
     hopLength: number,
     window: tf.Tensor,
     center: boolean = true
   ): tf.Tensor {
-    console.debug(`ISTFT input shape: ${complexTensor.shape}`);
+    console.debug(`ISTFT input shape: real=${realPart.shape}, imag=${imagPart.shape}`);
 
     return tf.tidy(() => {
-      const batchSize = complexTensor.shape[0];
-      const freqBins = complexTensor.shape[1];
-      const timeFrames = complexTensor.shape[2];
+      const channelCount = realPart.shape[0];
+      const freqBins = realPart.shape[1];
+      const timeFrames = realPart.shape[2];
       const results = [];
 
-      // Process each channel separately
-      for (let b = 0; b < batchSize; b++) {
-        // Get this channel
-        const channelTensor = complexTensor.slice([b, 0, 0], [1, -1, -1]).squeeze([0]);
-        console.debug(`Processing channel ${b}, shape: ${channelTensor.shape}`);
+      for (let ch = 0; ch < channelCount; ch++) {
+        // Extract this channel's real and imaginary parts
+        const channelReal = realPart.slice([ch, 0, 0], [1, -1, -1]).squeeze([0]);
+        const channelImag = imagPart.slice([ch, 0, 0], [1, -1, -1]).squeeze([0]);
 
-        // Split real and imaginary parts
-        const realPart = tf.real(channelTensor);
-        const imagPart = tf.imag(channelTensor);
+        // Transpose from [freq, time] to [time, freq] for IRFFT
+        const realT = tf.transpose(channelReal);
+        const imagT = tf.transpose(channelImag);
 
-        // Create a proper complex tensor for one channel
-        const channelComplex = tf.complex(realPart, imagPart);
+        // Apply conjugate for IFFT (negate imaginary part)
+        const conjImagT = tf.neg(imagT);
 
-        // Apply IRFFT to this single channel
-        console.debug(`IRFFT input shape for channel ${b}: ${channelComplex.shape}`);
+        // Create complex tensor for IRFFT
+        const complexTensor = tf.complex(realT, conjImagT);
 
-        const frames = tf.spectral.irfft(channelComplex);
-        console.debug(`IRFFT output shape for channel ${b}: ${frames.shape}`);
+        // Apply IRFFT to get time-domain frames
+        const frames = tf.spectral.irfft(complexTensor);
+        console.debug(`IRFFT output frames shape: ${frames.shape}`);
 
-        // Apply window function and perform overlap-add
-        const frameCount = frames.shape[0];
-        const frameLength = frames.shape[1];
+        // Apply window to each frame
+        const frameLength = frames.shape[1] || nFft;
+        const windowTensor = window.slice(0, frameLength);
+        const reshapedWindow = windowTensor.reshape([1, frameLength]);
+        const windowedFrames = frames.mul(reshapedWindow);
 
-        // Reshape window for broadcasting
-        const windowTensor = window.slice([0], [frameLength]);
-        const windowedFrames = tf.mul(frames, windowTensor);
-
-        // Manual overlap-add reconstruction
+        // Calculate output length
         const outputLength = (timeFrames - 1) * hopLength + nFft;
-        const outputBuffer = new Float32Array(outputLength).fill(0);
-        const normBuffer = new Float32Array(outputLength).fill(0);
 
-        // Get data as JavaScript arrays
-        const framesData = windowedFrames.arraySync() as number[][];
-        const windowData = windowTensor.arraySync() as number[];
+        // Create output tensor and normalization tensor
+        const outputTensor = tf.buffer([outputLength]);
+        const normTensor = tf.buffer([outputLength]);
 
-        // Perform overlap-add
-        for (let t = 0; t < frameCount; t++) {
+        // Extract frames data
+        const framesData = windowedFrames.arraySync();
+        const windowData = windowTensor.arraySync();
+
+        // Perform overlap-add using vectorized operations
+        for (let t = 0; t < timeFrames; t++) {
           const offset = t * hopLength;
-          for (let i = 0; i < frameLength; i++) {
+          const frame = framesData[t];
+
+          // We can optimize this by using tensor slices, but for now
+          // we'll use the buffer approach for clarity
+          for (let i = 0; i < Math.min(frame.length, frameLength); i++) {
             if (offset + i < outputLength) {
-              outputBuffer[offset + i] += framesData[t][i];
-              normBuffer[offset + i] += windowData[i] * windowData[i];
+              outputTensor.set(outputTensor.get(offset + i) + frame[i], offset + i);
+              normTensor.set(normTensor.get(offset + i) + windowData[i] * windowData[i], offset + i);
             }
           }
         }
 
-        // Normalize
-        for (let i = 0; i < outputLength; i++) {
-          if (normBuffer[i] > 1e-8) {
-            outputBuffer[i] /= normBuffer[i];
-          }
-        }
+        // Convert buffers to tensors
+        const output = outputTensor.toTensor();
+        const norm = normTensor.toTensor();
 
-        // Remove center padding
-        let resultBuffer = outputBuffer;
+        // Apply normalization
+        const normalized = tf.div(output, tf.add(norm, tf.scalar(1e-8)));
+
+        // Remove padding if center was true
+        let result = normalized;
         if (center) {
           const padSize = Math.floor(nFft / 2);
           if (outputLength > 2 * padSize) {
-            resultBuffer = outputBuffer.slice(padSize, outputLength - padSize);
+            result = normalized.slice([padSize], [outputLength - 2 * padSize]);
           }
         }
 
-        // Convert to tensor
-        results.push(tf.tensor1d(resultBuffer));
-
-        // Clean up
-        realPart.dispose();
-        imagPart.dispose();
-        channelComplex.dispose();
-        frames.dispose();
-        windowedFrames.dispose();
-        windowTensor.dispose();
+        results.push(result);
       }
 
-      // Stack all channels
+      // Stack channels
       return tf.stack(results);
     });
   }
 
-  private calculateInverseDimensions(inputTensor: tf.Tensor): [number[], number, number, number, number] {
-    // Extract batch dimensions and frequency-time dimensions
-    const shape = inputTensor.shape;
-    const rank = shape.length;
-
-    // Last 3 dimensions are channel, freq, time
-    const batchDimensions = shape.slice(0, rank - 3);
-    const channelDim = shape[rank - 3];
-    const freqDim = shape[rank - 2];
-    const timeDim = shape[rank - 1];
-
-    // Calculate number of frequency bins for inverse STFT
-    const numFreqBins = Math.floor(this.nFft / 2) + 1;
-
-    return [batchDimensions, channelDim, freqDim, timeDim, numFreqBins];
-  }
-
-
+  /**
+   * Prepares tensors for ISTFT without creating a complex tensor
+   * Returns real and imaginary parts separately
+   */
   private prepareForIstft(
     paddedTensor: tf.Tensor,
     batchDimensions: number[],
     channelDim: number,
     numFreqBins: number,
     timeDim: number
-  ): tf.Tensor {
+  ): { real: tf.Tensor, imag: tf.Tensor } {
     console.debug(`Preparing for ISTFT with shape: ${paddedTensor.shape}`);
 
     // Reshape to separate real and imaginary parts
@@ -377,17 +359,14 @@ export class STFT {
     const realPart = permutedTensor.slice([0, 0, 0, 0], [-1, -1, -1, 1]).squeeze([-1]);
     const imagPart = permutedTensor.slice([0, 0, 0, 1], [-1, -1, -1, 1]).squeeze([-1]);
 
-    // Create a proper TF complex tensor
-    const complexTensor = tf.complex(realPart, imagPart);
+    console.debug(`Real part shape: ${realPart.shape}, Imag part shape: ${imagPart.shape}`);
 
     // Clean up intermediate tensors
     reshapedTensor.dispose();
     flattenedTensor.dispose();
     permutedTensor.dispose();
-    realPart.dispose();
-    imagPart.dispose();
 
-    return complexTensor;
+    return { real: realPart, imag: imagPart };
   }
 
   inverse(inputTensor: tf.Tensor): tf.Tensor {
@@ -406,48 +385,47 @@ export class STFT {
 
     console.debug(`Padded tensor shape: ${paddedTensor.shape}`);
 
-    // Prepare for ISTFT
-    const complexTensor = this.prepareForIstft(
+    // Prepare for ISTFT - get real and imaginary parts
+    const { real, imag } = this.prepareForIstft(
       paddedTensor, batchDimensions, channelDim, numFreqBins, timeDim
     );
 
-    console.debug(`Complex tensor shape: ${complexTensor.shape}`);
+    console.debug(`Prepared real shape: ${real.shape}, imag shape: ${imag.shape}`);
 
-    // Perform ISTFT
-    const istftResult = this.istft(
-      complexTensor,
+    // Perform ISTFT with separate real and imaginary parts
+    const result = this.istft(
+      real,
+      imag,
       this.nFft,
       this.hopLength,
       this.hannWindow,
       true  // center=true to match PyTorch
     );
 
-    console.debug(`ISTFT result shape: ${istftResult.shape}`);
-
-    // Reshape to restore original batch and channel dimensions
-    // From: [batchSize*channelDim/2, timeLength]
-    // To: [...batchDimensions, 2, timeLength]
-    const batchSize = batchDimensions.length === 0 ? 1 :
-      batchDimensions.reduce((a, b) => a * b, 1);
-
-    // Check if reshaping is needed
-    let finalOutput = istftResult;
-
-    if (istftResult.shape[0] === batchSize * channelDim / 2) {
-      // If we have multiple batches/channels, reshape
-      const reshapeSize = [...batchDimensions, 2, istftResult.shape[1]];
-      finalOutput = istftResult.reshape(reshapeSize);
-    }
-
-    console.debug(`Final output shape: ${finalOutput.shape}`);
+    console.debug(`ISTFT result shape: ${result.shape}`);
 
     // Clean up
     paddedTensor.dispose();
-    complexTensor.dispose();
-    if (finalOutput !== istftResult) {
-      istftResult.dispose();
-    }
+    real.dispose();
+    imag.dispose();
 
-    return finalOutput;
+    return result;
+  }
+
+  private calculateInverseDimensions(inputTensor: tf.Tensor): [number[], number, number, number, number] {
+    // Extract batch dimensions and frequency-time dimensions
+    const shape = inputTensor.shape;
+    const rank = shape.length;
+
+    // Last 3 dimensions are channel, freq, time
+    const batchDimensions = shape.slice(0, rank - 3);
+    const channelDim = shape[rank - 3];
+    const freqDim = shape[rank - 2];
+    const timeDim = shape[rank - 1];
+
+    // Calculate number of frequency bins for inverse STFT
+    const numFreqBins = Math.floor(this.nFft / 2) + 1;
+
+    return [batchDimensions, channelDim, freqDim, timeDim, numFreqBins];
   }
 }
