@@ -40,8 +40,8 @@ export class MDXSeparator extends CommonSeparator {
 
 
   // State during processing
-  private primarySource?: Float32Array[];
-  private secondarySource?: Float32Array[];
+  private primarySource?: tf.Tensor;
+  private secondarySource?: tf.Tensor;
   private audioFilePath?: string;
   private audioFileBase?: string;
 
@@ -181,7 +181,7 @@ export class MDXSeparator extends CommonSeparator {
     // Normalize and process the primary source if it's not already an array
     if (!this.primarySource) {
       this.debug('Normalizing primary source...');
-      this.primarySource = this.normalize(source, this.normalizationThreshold, this.amplificationThreshold);
+      this.primarySource = await this.normalize(source, this.normalizationThreshold, this.amplificationThreshold);
     }
 
     // Process the secondary source if not already an array
@@ -204,7 +204,7 @@ export class MDXSeparator extends CommonSeparator {
     if (!this.outputSingleStem || this.outputSingleStem.toLowerCase() === this.secondaryStemName.toLowerCase()) {
       const secondaryPath = this.getStemOutputPath(this.secondaryStemName, customOutputNames);
 
-      this.info(`Saving ${this.secondaryStemName} stem to ${secondaryPath}...`);
+      this.info(`Saving secondary ${this.secondaryStemName} stem to ${secondaryPath}...`);
       const secondaryUrl = await this.saveAudioOutput(secondaryPath, this.secondarySource!, this.secondaryStemName);
       outputFiles.push(secondaryUrl);
     }
@@ -217,7 +217,7 @@ export class MDXSeparator extends CommonSeparator {
         this.primarySource = source;
       }
 
-      this.info(`Saving ${this.primaryStemName} stem to ${primaryPath}...`);
+      this.info(`Saving primary ${this.primaryStemName} stem to ${primaryPath}...`);
       const primaryUrl = await this.saveAudioOutput(primaryPath, this.primarySource, this.primaryStemName);
       outputFiles.push(primaryUrl);
     }
@@ -590,7 +590,6 @@ export class MDXSeparator extends CommonSeparator {
     // Create tensor with the same shape as the original
     return tf.tensor(Array.from(output), shape);
   }
-
   /**
    * Subtract one set of channels from another using tensor operations
    * @param mix First tensor of shape [batch, channels, time] or [channels, time]
@@ -601,20 +600,57 @@ export class MDXSeparator extends CommonSeparator {
     console.debug(`Subtracting channels: mix shape=${mix.shape}, source shape=${source.shape}`);
 
     return tf.tidy(() => {
-      // Ensure both have the same shape and dimensions
+      // Handle dimension mismatches
       let mixTensor = mix;
       let sourceTensor = source;
 
-      // Add batch dimension if missing
-      if (mix.shape.length === 2) {
+      // 1. First ensure both have same number of dimensions
+      // If mix is 2D [channels, time] and source is 3D [batch, channels, time]
+      if (mix.shape.length === 2 && source.shape.length === 3) {
+        console.debug('Adding batch dimension to mix tensor');
         mixTensor = mix.expandDims(0);
       }
-
-      if (source.shape.length === 2) {
+      // If source is 2D [channels, time] and mix is 3D [batch, channels, time]
+      else if (source.shape.length === 2 && mix.shape.length === 3) {
+        console.debug('Adding batch dimension to source tensor');
         sourceTensor = source.expandDims(0);
       }
 
-      // Perform subtraction
+      console.debug(`After dimension adjustment: mix=${mixTensor.shape}, source=${sourceTensor.shape}`);
+
+      // 2. Now handle time dimension mismatch
+      const mixTimeLength = mixTensor.shape[mixTensor.shape.length - 1];
+      const sourceTimeLength = sourceTensor.shape[sourceTensor.shape.length - 1];
+
+      if (mixTimeLength !== sourceTimeLength) {
+        console.debug(`Time length mismatch: mix=${mixTimeLength}, source=${sourceTimeLength}`);
+
+        // Instead of truncating, let's pad the shorter one to match the longer one
+        // This preserves more audio data
+        if (mixTimeLength > sourceTimeLength) {
+          // Pad source to match mix length
+          const padSize = mixTimeLength - sourceTimeLength;
+          console.debug(`Padding source with ${padSize} zeros`);
+
+          const paddings = Array(sourceTensor.shape.length).fill([0, 0]);
+          paddings[paddings.length - 1] = [0, padSize]; // Pad only the time dimension
+
+          sourceTensor = tf.pad(sourceTensor, paddings);
+        } else {
+          // Pad mix to match source length
+          const padSize = sourceTimeLength - mixTimeLength;
+          console.debug(`Padding mix with ${padSize} zeros`);
+
+          const paddings = Array(mixTensor.shape.length).fill([0, 0]);
+          paddings[paddings.length - 1] = [0, padSize]; // Pad only the time dimension
+
+          mixTensor = tf.pad(mixTensor, paddings);
+        }
+
+        console.debug(`After padding: mix=${mixTensor.shape}, source=${sourceTensor.shape}`);
+      }
+
+      // 3. Perform subtraction with tensors of matching dimensions
       const result = tf.sub(mixTensor, sourceTensor);
       console.debug(`Subtraction result shape: ${result.shape}`);
 
