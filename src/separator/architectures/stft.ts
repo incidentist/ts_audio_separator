@@ -401,15 +401,16 @@ export class STFT {
       this.hannWindow,
       true  // center=true to match PyTorch
     );
-
-    console.debug(`ISTFT result shape: ${result.shape}`);
+    const batchResult = result.expandDims(0);
+    console.debug(`ISTFT result shape: ${batchResult.shape}`);
 
     // Clean up
     paddedTensor.dispose();
     real.dispose();
     imag.dispose();
+    result.dispose();
 
-    return result;
+    return batchResult;
   }
 
   private calculateInverseDimensions(inputTensor: tf.Tensor): [number[], number, number, number, number] {

@@ -357,7 +357,7 @@ export class MDXSeparator extends CommonSeparator {
 
         // Run the model to separate the sources
         const tarWaves = await this.runModel(mixWave, isMatchMix);
-
+        console.log("tarWaves shape: ", tarWaves.shape);
         // Apply window and update result/divider in one clean step
         const { result: newResult, divider: newDivider } =
           this.applyWindow(tarWaves, window, result, divider, start, end, chunkSizeActual);
@@ -438,7 +438,9 @@ export class MDXSeparator extends CommonSeparator {
 
     if (window !== null) {
       // Apply window to the tar_waves
+      console.log("window mul")
       const windowedTarWaves = tf.mul(tarWaves.slice([0, 0, 0], [1, 2, chunkSizeActual]), window);
+      console.log("window mul done")
 
       // Update divider with window
       const newDivider = this.updateTensorSlice(divider, window, start, end);
@@ -476,6 +478,7 @@ export class MDXSeparator extends CommonSeparator {
   private updateTensorSlice(tensor: tf.Tensor, values: tf.Tensor, start: number, end: number): tf.Tensor {
     // Ensure the values tensor has the right size for the slice
     const sliceSize = end - start;
+    console.log(`Slicing ${tensor.shape}`)
     const slicedValues = values.slice([0, 0, 0], [1, 2, sliceSize]);
 
     // Create padded version of values to match full tensor shape
@@ -589,32 +592,63 @@ export class MDXSeparator extends CommonSeparator {
   }
 
   /**
-   * Subtract one set of channels from another
+   * Subtract one set of channels from another using tensor operations
+   * @param mix First tensor of shape [batch, channels, time] or [channels, time]
+   * @param source Second tensor of shape [batch, channels, time] or [channels, time]
+   * @returns Tensor with mix - source
    */
-  private subtractChannels(mix: Float32Array[], source: Float32Array[]): Float32Array[] {
-    const result: Float32Array[] = [];
+  private subtractChannels(mix: tf.Tensor, source: tf.Tensor): tf.Tensor {
+    console.debug(`Subtracting channels: mix shape=${mix.shape}, source shape=${source.shape}`);
 
-    for (let ch = 0; ch < mix.length; ch++) {
-      const channel = new Float32Array(mix[ch].length);
-      for (let i = 0; i < channel.length; i++) {
-        channel[i] = mix[ch][i] - source[ch][i];
+    return tf.tidy(() => {
+      // Ensure both have the same shape and dimensions
+      let mixTensor = mix;
+      let sourceTensor = source;
+
+      // Add batch dimension if missing
+      if (mix.shape.length === 2) {
+        mixTensor = mix.expandDims(0);
       }
-      result.push(channel);
-    }
 
-    return result;
+      if (source.shape.length === 2) {
+        sourceTensor = source.expandDims(0);
+      }
+
+      // Perform subtraction
+      const result = tf.sub(mixTensor, sourceTensor);
+      console.debug(`Subtraction result shape: ${result.shape}`);
+
+      return result;
+    });
   }
-
   /**
    * Save audio output to a file (in browser, creates a blob URL)
+   * @param outputPath The path where the audio would be saved (used as identifier)
+   * @param audioData Tensor or Float32Array[] containing audio data
+   * @param stemName Name of the stem for logging purposes
+   * @returns URL for the blob containing the WAV file
    */
-  private async saveAudioOutput(outputPath: string, audioData: Float32Array[], stemName: string): Promise<string> {
+  private async saveAudioOutput(outputPath: string, audioData: tf.Tensor | Float32Array[], stemName: string): Promise<string> {
     // Since we're running in a browser, we can't actually save to the filesystem
     // Instead, we'll create a blob and return a downloadable URL
+    this.debug(`Saving ${stemName} to ${outputPath}`);
 
     try {
+      // Convert tensor to Float32Array[] if needed
+      let audioChannels: Float32Array[];
+
+      if (audioData instanceof tf.Tensor) {
+        this.debug(`Converting tensor with shape ${audioData.shape} to Float32Arrays`);
+        audioChannels = await this.tensorToArrays(audioData);
+        audioData.dispose();
+      } else {
+        audioChannels = audioData;
+      }
+
+      this.debug(`Audio data has ${audioChannels.length} channels with ${audioChannels[0]?.length || 0} samples each`);
+
       // Create a WAV blob
-      const blob = await AudioUtils.saveAudioFile(audioData, this.sampleRate, outputPath);
+      const blob = await AudioUtils.saveAudioFile(audioChannels, this.sampleRate, outputPath);
 
       // Create a blob URL
       const blobUrl = URL.createObjectURL(blob);
@@ -639,6 +673,37 @@ export class MDXSeparator extends CommonSeparator {
       throw error;
     }
   }
-}
 
+  /**
+   * Convert a tensor to array of Float32Arrays for audio processing
+   * Handles tensors of shape [batch, channels, samples] or [channels, samples]
+   */
+  private async tensorToArrays(tensor: tf.Tensor): Promise<Float32Array[]> {
+    const shape = tensor.shape;
+    this.debug(`Converting tensor with shape ${shape} to arrays`);
+
+    // Extract tensor data based on its shape
+    let channelsData: number[][];
+
+    if (shape.length === 3) {
+      // [batch, channels, samples] - extract first batch
+      const batchData = await tensor.slice([0, 0, 0], [1, -1, -1]).squeeze([0]).array() as number[][];
+      channelsData = batchData;
+    } else if (shape.length === 2) {
+      // [channels, samples]
+      channelsData = await tensor.array() as number[][];
+    } else {
+      throw new Error(`Unsupported tensor shape for audio: ${shape}`);
+    }
+
+    // Convert to Float32Array
+    const result: Float32Array[] = [];
+    for (let i = 0; i < channelsData.length; i++) {
+      result.push(new Float32Array(channelsData[i]));
+    }
+
+    this.debug(`Converted tensor to ${result.length} channels`);
+    return result;
+  }
+}
 export { MDXArchConfig };
