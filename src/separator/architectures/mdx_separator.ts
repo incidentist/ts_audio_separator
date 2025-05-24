@@ -187,13 +187,12 @@ export class MDXSeparator extends CommonSeparator {
     // Process the secondary source if not already an array
     if (!this.secondarySource) {
       this.debug('Producing secondary source: demixing in match_mix mode');
-      const rawMix = await this.demix(normalizedMix, true);
 
       if (this.invertUsingSpec) {
-        this.debug('Inverting secondary stem using spectogram as invertUsingSpec is set to true');
-        // For spectral inversion, we'd need to implement this method
-        // For now, use simple subtraction
-        this.secondarySource = this.subtractChannels(normalizedMix, source);
+        throw Error('invertUsingSpec is not implemented');
+        // For spectral inversion, we'd need to implement invertStem method
+        // const rawMix = await this.demix(normalizedMix, true);
+        // this.secondarySource = this.invertStem(rawMix, source);
       } else {
         this.debug('Inverting secondary stem by subtracting demixed stem from original mix');
         this.secondarySource = this.subtractChannels(normalizedMix, source);
@@ -242,6 +241,7 @@ export class MDXSeparator extends CommonSeparator {
   }
 
   private async demix(mix: tf.Tensor2D, isMatchMix: boolean = false): Promise<tf.Tensor> {
+    const start = performance.now();
     this.debug(`Starting demixing process with isMatchMix: ${isMatchMix}...`);
     this.initializeModelSettings();
 
@@ -405,6 +405,9 @@ export class MDXSeparator extends CommonSeparator {
     // In Python this is source = tar_waves[:, 0:None], which keeps all data
     const source = finalTarWaves;
     console.debug(`Final source shape: ${source.shape}`);
+    const end = performance.now();
+    console.log(`demix took ${(end - start).toFixed(2)}ms`);
+
 
     // Apply compensation if not matching the mix
     if (!isMatchMix) {
