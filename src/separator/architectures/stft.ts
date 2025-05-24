@@ -50,7 +50,7 @@ export class STFT {
 
     // Reshape the tensor to merge batch and channel dimensions for STFT processing.
     const reshapedTensor = tensor.reshape([-1, timeDim]);
-    console.debug(`Reshaped tensor: ${reshapedTensor.shape}`);
+    this.debugTensorStats(reshapedTensor, "stft: reshapedTensor");
 
     // Get STFT result in PyTorch format
     const stftOutput = this.torchStyleStft(
@@ -60,14 +60,13 @@ export class STFT {
       this.hannWindow,
       true  // center=true to match PyTorch
     );
-
-    console.debug(`Raw STFT output shape: ${stftOutput.shape}`);
+    this.debugTensorStats(stftOutput, "stft: torchStyleStft output");
 
     // Rearrange the dimensions just like in the Python code
     // From: [batch*channels, freq_bins, time_frames, 2] 
     // To: [batch*channels, 2, freq_bins, time_frames]
     const permutedStftOutput = tf.transpose(stftOutput, [0, 3, 1, 2]);
-    console.debug(`Permuted STFT output shape: ${permutedStftOutput.shape}`);
+    this.debugTensorStats(permutedStftOutput, "stft: permutedStftOutput");
 
     // Now reshape to restore original batch and channel dimensions
     // From: [batch*channels, 2, freq_bins, time_frames]
@@ -129,7 +128,7 @@ export class STFT {
       // Reshape to flatten ALL dimensions except time
       // This is equivalent to reshaped_tensor = input_tensor.reshape([-1, time_dim])
       const flatTensor = tensor.reshape([-1, timeLength]);
-      console.debug(`Flattened tensor shape: ${flatTensor.shape}`);
+      this.debugTensorStats(flatTensor, "torchStyleStft: flatTensor");
 
       // Process each flattened batch*channel
       const batchChannelSize = flatTensor.shape[0];
@@ -138,13 +137,16 @@ export class STFT {
       for (let bc = 0; bc < batchChannelSize; bc++) {
         // Extract this batch*channel as a 1D tensor
         const signal = flatTensor.slice([bc, 0], [1, -1]).reshape([timeLength]);
+        this.debugTensorStats(signal, "torchStyleStft: flatTensor slice");
 
         // Apply padding if center=true (like PyTorch)
         let paddedSignal = signal;
         if (center) {
           const padSize = Math.floor(nFft / 2);
-          paddedSignal = tf.pad(signal, [[padSize, padSize]], 'reflect');
+          paddedSignal = tf.mirrorPad(signal, [[padSize, padSize]], 'reflect');
         }
+        this.debugTensorStats(paddedSignal, "torchStyleStft: paddedSignal");
+
 
         // Apply STFT
         const stftResult = tf.signal.stft(
@@ -428,5 +430,50 @@ export class STFT {
     const numFreqBins = Math.floor(this.nFft / 2) + 1;
 
     return [batchDimensions, channelDim, freqDim, timeDim, numFreqBins];
+  }
+
+
+  /**
+  * Debug utility to check tensor stats including NaN/Inf detection
+  */
+  private debugTensorStats(tensor: tf.Tensor, name: string): void {
+    const stats = tf.tidy(() => {
+      const abs = tf.abs(tensor);
+      const max = tf.max(abs);
+      const mean = tf.mean(abs);
+      const nonZero = tf.sum(tf.cast(tf.greater(abs, 1e-8), 'int32'));
+      const total = tf.scalar(tensor.size);
+
+      // NaN and Inf detection
+      const isNaN = tf.isNaN(tensor);
+      const isInf = tf.isInf(tensor);
+      const nanCount = tf.sum(tf.cast(isNaN, 'int32'));
+      const infCount = tf.sum(tf.cast(isInf, 'int32'));
+
+      return {
+        max: max.dataSync()[0],
+        mean: mean.dataSync()[0],
+        nonZeroCount: nonZero.dataSync()[0],
+        totalCount: total.dataSync()[0],
+        nanCount: nanCount.dataSync()[0],
+        infCount: infCount.dataSync()[0],
+        shape: tensor.shape
+      };
+    });
+
+    const nonZeroPercent = (stats.nonZeroCount / stats.totalCount * 100).toFixed(2);
+    const status = stats.nanCount > 0 ? "🚨 NaN" : stats.infCount > 0 ? "⚠️ Inf" : stats.max < 1e-8 ? "🤔 Zero" : "✅ OK";
+
+    console.log(`${status} ${name}: shape=${stats.shape}, max=${stats.max.toFixed(6)}, mean=${stats.mean.toFixed(6)}, nonZero=${stats.nonZeroCount}/${stats.totalCount} (${nonZeroPercent}%)`);
+
+    if (stats.nanCount > 0) {
+      console.error(`   └─ Contains ${stats.nanCount} NaN values!`);
+    }
+    if (stats.infCount > 0) {
+      console.error(`   └─ Contains ${stats.infCount} Inf values!`);
+    }
+    if (stats.max < 1e-8 && stats.nanCount === 0) {
+      console.warn(`   └─ Tensor appears to be essentially zero`);
+    }
   }
 }

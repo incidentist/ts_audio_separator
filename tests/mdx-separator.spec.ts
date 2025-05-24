@@ -6,9 +6,10 @@ import { existsSync, mkdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const testFixtureFile = "nanci.wav"
 
 test.describe('MDX Separator Integration Tests', () => {
-  test('should process real audio file (nanci.wav)', async ({ page }) => {
+  test(`should process real audio file (${testFixtureFile})`, async ({ page }) => {
     page.on('console', msg => console.log('Browser console:', msg.text()));
     page.on('pageerror', error => console.log('Page error:', error));
 
@@ -17,12 +18,12 @@ test.describe('MDX Separator Integration Tests', () => {
     page.on('response', response => console.log('Response:', response.url(), response.status()));
 
     // Check if the audio file exists
-    const audioPath = join(__dirname, 'fixtures', 'nanci.wav');
+    const audioPath = join(__dirname, 'fixtures', testFixtureFile);
     console.log('Checking for audio file at:', audioPath);
     expect(existsSync(audioPath)).toBe(true);
 
     // Serve the test file
-    await page.route('**/nanci.wav', async route => {
+    await page.route(`**/${testFixtureFile}`, async route => {
       await route.fulfill({ path: audioPath });
     });
 
@@ -30,6 +31,8 @@ test.describe('MDX Separator Integration Tests', () => {
 
     // Execute the test in the browser context
     const result = await page.evaluate(async () => {
+      const testFixtureFile = "nanci.wav"
+
       // Wait for the library to be available
       console.log("Waiting for WebDemix2...");
       const checkLibrary = () => new Promise<void>((resolve) => {
@@ -63,10 +66,10 @@ test.describe('MDX Separator Integration Tests', () => {
           logLevel: 'debug',
           sampleRate: 44100,
           normalizationThreshold: 0.9,
-          amplificationThreshold: 0.6,
+          amplificationThreshold: 0.0,
           outputDir: 'output',
-          primaryStemName: 'vocals',
-          secondaryStemName: 'instrumental'
+          primaryStemName: 'instrumental',
+          secondaryStemName: 'vocals'
         },
         {
           segmentSize: 256,
@@ -82,7 +85,7 @@ test.describe('MDX Separator Integration Tests', () => {
       console.log("Model loaded successfully");
 
       // Test with real audio file
-      const audioUrl = '/nanci.wav';
+      const audioUrl = testFixtureFile;
 
       // Test separate method (which includes prepareMix and normalize)
       let separateResult = null;
