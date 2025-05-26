@@ -186,7 +186,7 @@ export class MDXSeparator extends CommonSeparator {
 
     // Process the secondary source if not already an array
     if (!this.secondarySource) {
-      this.debug('Producing secondary source: demixing in match_mix mode');
+      this.debug('Producing secondary source');
 
       if (this.invertUsingSpec) {
         throw Error('invertUsingSpec is not implemented');
@@ -242,7 +242,7 @@ export class MDXSeparator extends CommonSeparator {
 
   private async demix(mix: tf.Tensor2D, isMatchMix: boolean = false): Promise<tf.Tensor> {
     const start = performance.now();
-    this.debug(`Starting demixing process with isMatchMix: ${isMatchMix}...`);
+    this.debugTensorStats(mix, `demix input (isMatchMix=${isMatchMix})`);
     this.initializeModelSettings();
 
     // Preserves the original mix for later use
@@ -284,7 +284,7 @@ export class MDXSeparator extends CommonSeparator {
 
     // Concatenate along time dimension (axis 1) to create padded mixture
     const mixture = tf.concat([leftPad, mix, rightPad], 1);
-    this.debug(`Mixture prepared with padding. Mixture shape: ${mixture.shape}`);
+    this.debugTensorStats(mixture, `runModel: padded mixture`);
 
     // Calculate the step size for processing chunks based on the overlap
     const step = Math.floor((1 - overlap) * chunkSize);
@@ -292,8 +292,8 @@ export class MDXSeparator extends CommonSeparator {
 
     // Initialize arrays to store the results and to account for overlap
     // Initialize tensors to store results and to account for overlap
-    // Shape: [1, 2, timeLength] matching the Python dimensions
-    const resultShape = [1, 2, mixLength];
+    // Shape: [1, 2, timeLength + padding] matching the Python dimensions
+    const resultShape = [1, 2, mixture.shape[1]];
     let result = tf.zeros(resultShape);     // For accumulating processed chunks
     let divider = tf.zeros(resultShape);    // For tracking overlap counts
 
@@ -376,8 +376,22 @@ export class MDXSeparator extends CommonSeparator {
       if (window) window.dispose();
       mixPart.dispose();
     }
+
+    // Right before: const tarWaves = tf.div(result, divider);
+    this.debugTensorStats(result, "Result tensor before division");
+    this.debugTensorStats(divider, "Divider tensor before division");
+
+    // Check if divider has any zeros (which would cause issues)
+    const dividerStats = tf.tidy(() => {
+      const zeros = tf.sum(tf.cast(tf.equal(divider, 0), 'int32'));
+      const min = tf.min(divider);
+      return {
+        zeroCount: zeros.dataSync()[0],
+        minValue: min.dataSync()[0]
+      };
+    });
+    console.log(`Divider stats: ${dividerStats.zeroCount} zeros, min value: ${dividerStats.minValue}`);
     // Normalize the results by the divider to account for overlap
-    console.debug('Normalizing result by dividing result by divider.');
     // Use TensorFlow to divide result by divider
     const tarWaves = tf.div(result, divider);
     console.debug(`Normalized tar_waves shape: ${tarWaves.shape}`);
@@ -390,6 +404,10 @@ export class MDXSeparator extends CommonSeparator {
     console.debug(`Trimming tensor from shape ${tarWaves.shape}`);
     const trimStart = this.trim;
     const trimEnd = tarWaves.shape[2] - this.trim;
+    const trimLength = trimEnd - trimStart;
+
+    console.debug(`Trim values: trimStart=${trimStart}, trimEnd=${trimEnd}, trimLength=${trimLength}, this.trim=${this.trim}`);
+
     const trimmedTarWaves = tarWaves.slice([0, 0, trimStart], [-1, -1, trimEnd - trimStart]);
     console.debug(`After trimming: ${trimmedTarWaves.shape}`);
 
@@ -511,9 +529,10 @@ export class MDXSeparator extends CommonSeparator {
    */
   private async runModel(mix: tf.Tensor, isMatchMix: boolean = false): Promise<tf.Tensor> {
     // Apply STFT to the mix
-    this.debug(`Running STFT on the mix. Mix shape: ${mix.shape}`);
+    this.debugTensorStats(mix, `runModel input (isMatchMix=${isMatchMix})`);
+
     const spek = this.stft.forward(mix);
-    this.debug(`STFT applied on mix. Spectrum shape: ${spek.shape}`);
+    this.debugTensorStats(spek, "STFT output");
 
     // Zero out the first 3 bins of the spectrum to reduce low-frequency noise
     // We'll use tf.tidy to manage memory for these operations
@@ -560,7 +579,7 @@ export class MDXSeparator extends CommonSeparator {
 
     // Apply inverse STFT to convert back to time domain
     const result = this.stft.inverse(specPred);
-    this.debug(`Inverse STFT applied. Returning result with shape: ${result.shape}`);
+    this.debugTensorStats(result, `runModel output (isMatchMix=${isMatchMix})`);
 
     // Clean up tensors
     spek.dispose();
@@ -743,6 +762,51 @@ export class MDXSeparator extends CommonSeparator {
 
     this.debug(`Converted tensor to ${result.length} channels`);
     return result;
+  }
+
+
+  /**
+  * Debug utility to check tensor stats including NaN/Inf detection
+  */
+  private debugTensorStats(tensor: tf.Tensor, name: string): void {
+    const stats = tf.tidy(() => {
+      const abs = tf.abs(tensor);
+      const max = tf.max(abs);
+      const mean = tf.mean(abs);
+      const nonZero = tf.sum(tf.cast(tf.greater(abs, 1e-8), 'int32'));
+      const total = tf.scalar(tensor.size);
+
+      // NaN and Inf detection
+      const isNaN = tf.isNaN(tensor);
+      const isInf = tf.isInf(tensor);
+      const nanCount = tf.sum(tf.cast(isNaN, 'int32'));
+      const infCount = tf.sum(tf.cast(isInf, 'int32'));
+
+      return {
+        max: max.dataSync()[0],
+        mean: mean.dataSync()[0],
+        nonZeroCount: nonZero.dataSync()[0],
+        totalCount: total.dataSync()[0],
+        nanCount: nanCount.dataSync()[0],
+        infCount: infCount.dataSync()[0],
+        shape: tensor.shape
+      };
+    });
+
+    const nonZeroPercent = (stats.nonZeroCount / stats.totalCount * 100).toFixed(2);
+    const status = stats.nanCount > 0 ? "🚨 NaN" : stats.infCount > 0 ? "⚠️ Inf" : stats.max < 1e-8 ? "🤔 Zero" : "✅ OK";
+
+    console.log(`${status} ${name}: shape=${stats.shape}, max=${stats.max.toFixed(6)}, mean=${stats.mean.toFixed(6)}, nonZero=${stats.nonZeroCount}/${stats.totalCount} (${nonZeroPercent}%)`);
+
+    if (stats.nanCount > 0) {
+      console.error(`   └─ Contains ${stats.nanCount} NaN values!`);
+    }
+    if (stats.infCount > 0) {
+      console.error(`   └─ Contains ${stats.infCount} Inf values!`);
+    }
+    if (stats.max < 1e-8 && stats.nanCount === 0) {
+      console.warn(`   └─ Tensor appears to be essentially zero`);
+    }
   }
 }
 export { MDXArchConfig };

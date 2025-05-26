@@ -278,6 +278,7 @@ export class STFT {
 
         // Calculate output length
         const outputLength = (timeFrames - 1) * hopLength + nFft;
+        console.log(`ISTFT: timeFrames=${timeFrames}, hopLength=${hopLength}, nFft=${nFft}, calculated outputLength=${outputLength}`);
 
         // Create output tensor and normalization tensor
         const outputTensor = tf.buffer([outputLength]);
@@ -301,6 +302,7 @@ export class STFT {
             }
           }
         }
+        console.log(`ISTFT: actual output length=${outputTensor.toTensor().shape[0]}`);
 
         // Convert buffers to tensors
         const output = outputTensor.toTensor();
