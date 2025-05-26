@@ -249,9 +249,6 @@ export class MDXSeparator extends CommonSeparator {
     const orgMix = mix;
     this.debug(`Original mix stored. Shape: ${mix.shape}`);
 
-    // Initializes a list to store the separated waveforms
-    // const tarWaves_: tf.Tensor[] = [];
-
     // Handling different chunk sizes and overlaps based on the matching requirement
     let chunkSize: number;
     let overlap: number;
@@ -291,57 +288,64 @@ export class MDXSeparator extends CommonSeparator {
     this.debug(`Step size for processing chunks: ${step} as overlap is set to ${overlap}.`);
 
     // Initialize arrays to store the results and to account for overlap
-    // Initialize tensors to store results and to account for overlap
-    // Shape: [1, 2, timeLength + padding] matching the Python dimensions
     const resultShape = [1, 2, mixture.shape[1]];
     let result = tf.zeros(resultShape);     // For accumulating processed chunks
     let divider = tf.zeros(resultShape);    // For tracking overlap counts
 
-    // You could log the shapes for debugging
     this.debug(`Initialized result and divider tensors with shape: ${result.shape}`);
 
     // Initialize counters for processing chunks
     let total = 0;
-    const totalLength = mixLength;
-    const totalChunks = Math.ceil(totalLength / step);
+    const mixtureLength = mixture.shape[1];
+
+    // Calculate total chunks more accurately
+    // We need at least one full chunk worth of data to process
+    const effectiveLength = mixtureLength - chunkSize;
+    const totalChunks = effectiveLength > 0 ? Math.floor(effectiveLength / step) + 1 : 1;
+
+    this.debug(`Mixture length: ${mixtureLength}, Effective length for stepping: ${effectiveLength}`);
     this.debug(`Total chunks to process: ${totalChunks}`);
 
     // Process each chunk of the mixture
-    for (let i = 0; i < totalLength; i += step) {
+    for (let i = 0; i <= effectiveLength && i < mixtureLength; i += step) {
       total++;
       const start = i;
-      const end = Math.min(i + chunkSize, totalLength);
-      this.debug(`Processing chunk ${total}/${totalChunks}: Start ${start}, End ${end}`);
+      const end = Math.min(i + chunkSize, mixtureLength);
+      const actualChunkSize = end - start;
+
+      // Skip if we don't have enough samples for a meaningful chunk
+      if (actualChunkSize < this.nFft) {
+        this.debug(`Skipping chunk ${total} - too small (${actualChunkSize} < ${this.nFft})`);
+        break;
+      }
+
+      this.debug(`Processing chunk ${total}/${totalChunks}: Start ${start}, End ${end}, Size ${actualChunkSize}`);
 
       // Handle windowing for overlapping chunks
-      const chunkSizeActual = end - start;
       let window: tf.Tensor | null = null;
 
       if (overlap !== 0) {
-        // Create Hann window
-        const windowBase = tf.signal.hannWindow(chunkSizeActual);
-
-        // Reshape to match the shape [1, 2, chunkSizeActual]
-        // Equivalent to np.tile(window[None, None, :], (1, 2, 1))
+        // Create Hann window for the actual chunk size
+        const windowBase = tf.signal.hannWindow(actualChunkSize);
+        // Reshape to match the shape [1, 2, actualChunkSize]
         window = windowBase.expandDims(0).expandDims(0).tile([1, 2, 1]);
         windowBase.dispose();
-
         this.debug("Window applied to the chunk.");
       }
 
-      // Extract the chunk from mixture - shape [2, chunkSizeActual]
-      let mixPart_ = mixture.slice([0, start], [2, chunkSizeActual]);
+      // Extract the chunk from mixture
+      let mixPart_ = mixture.slice([0, start], [2, actualChunkSize]);
 
-      if (end !== i + chunkSize) {
-        // Handle padding for incomplete chunks
-        const padSize = (i + chunkSize) - end;
+      // Zero-pad if chunk is incomplete
+      if (actualChunkSize < chunkSize) {
+        const padSize = chunkSize - actualChunkSize;
         const padding = tf.zeros([2, padSize]);
-        mixPart_ = tf.concat([mixPart_, padding], 1);  // Concat along time axis
+        mixPart_ = tf.concat([mixPart_, padding], 1);
         padding.dispose();
+        this.debug(`Padded incomplete chunk with ${padSize} zeros`);
       }
 
-      // Add batch dimension - this matches the Python code:
-      // mix_part = torch.tensor([mix_part_], dtype=torch.float32)
+      // Add batch dimension
       const mixPart = mixPart_.expandDims(0);  // Shape: [1, 2, chunkSize]
       mixPart_.dispose();
 
@@ -357,10 +361,10 @@ export class MDXSeparator extends CommonSeparator {
 
         // Run the model to separate the sources
         const tarWaves = await this.runModel(mixWave, isMatchMix);
-        console.log("tarWaves shape: ", tarWaves.shape);
-        // Apply window and update result/divider in one clean step
+
+        // Apply window and update result/divider
         const { result: newResult, divider: newDivider } =
-          this.applyWindow(tarWaves, window, result, divider, start, end, chunkSizeActual);
+          this.applyWindow(tarWaves, window, result, divider, start, end, actualChunkSize);
 
         // Update with new tensors and clean up old ones
         result.dispose();
@@ -370,69 +374,59 @@ export class MDXSeparator extends CommonSeparator {
 
         // Clean up
         tarWaves.dispose();
+        mixWave.dispose();
       }
 
-      // Make sure to dispose tensors when done
+      // Clean up window if it exists
       if (window) window.dispose();
       mixPart.dispose();
     }
 
-    // Right before: const tarWaves = tf.div(result, divider);
+    // Clean up padding tensors
+    leftPad.dispose();
+    rightPad.dispose();
+    mixture.dispose();
+
+    // Debug divider before division
     this.debugTensorStats(result, "Result tensor before division");
     this.debugTensorStats(divider, "Divider tensor before division");
 
-    // Check if divider has any zeros (which would cause issues)
-    const dividerStats = tf.tidy(() => {
-      const zeros = tf.sum(tf.cast(tf.equal(divider, 0), 'int32'));
-      const min = tf.min(divider);
-      return {
-        zeroCount: zeros.dataSync()[0],
-        minValue: min.dataSync()[0]
-      };
-    });
-    console.log(`Divider stats: ${dividerStats.zeroCount} zeros, min value: ${dividerStats.minValue}`);
     // Normalize the results by the divider to account for overlap
-    // Use TensorFlow to divide result by divider
-    const tarWaves = tf.div(result, divider);
-    console.debug(`Normalized tar_waves shape: ${tarWaves.shape}`);
+    // Add small epsilon to prevent division by zero
+    const epsilon = 1e-8;
+    const dividerPlusEpsilon = divider.add(epsilon);
+    const tarWaves = tf.div(result, dividerPlusEpsilon);
+
+    this.debug(`Normalized tar_waves shape: ${tarWaves.shape}`);
 
     // Clean up intermediate tensors
     result.dispose();
     divider.dispose();
+    dividerPlusEpsilon.dispose();
 
-    // Trim the tensor to remove padding at the beginning and end
-    console.debug(`Trimming tensor from shape ${tarWaves.shape}`);
-    const trimStart = this.trim;
-    const trimEnd = tarWaves.shape[2] - this.trim;
-    const trimLength = trimEnd - trimStart;
+    // Extract the valid portion (remove padding)
+    // The valid portion starts at trim and ends at trim + original mix length
+    const validStart = this.trim;
+    const validEnd = this.trim + mixLength;
 
-    console.debug(`Trim values: trimStart=${trimStart}, trimEnd=${trimEnd}, trimLength=${trimLength}, this.trim=${this.trim}`);
+    this.debug(`Extracting valid portion: start=${validStart}, end=${validEnd}, length=${mixLength}`);
 
-    const trimmedTarWaves = tarWaves.slice([0, 0, trimStart], [-1, -1, trimEnd - trimStart]);
-    console.debug(`After trimming: ${trimmedTarWaves.shape}`);
-
-    // Ensure we don't exceed the original mix length
-    const finalLength = Math.min(mixLength, trimmedTarWaves.shape[2]);
-    const finalTarWaves = trimmedTarWaves.slice([0, 0, 0], [-1, -1, finalLength]);
-    console.debug(`After slicing to mix length ${mixLength}: ${finalTarWaves.shape}`);
-
-    // Clean up intermediate tensor
-    trimmedTarWaves.dispose();
+    // Slice to get only the valid audio
+    const validTarWaves = tarWaves.slice([0, 0, validStart], [1, 2, mixLength]);
     tarWaves.dispose();
 
-    // In Python this is source = tar_waves[:, 0:None], which keeps all data
-    const source = finalTarWaves;
-    console.debug(`Final source shape: ${source.shape}`);
+    // Extract the source
+    const source = validTarWaves;
+    this.debug(`Final source shape: ${source.shape}`);
+
     const end = performance.now();
     console.log(`demix took ${(end - start).toFixed(2)}ms`);
-
 
     // Apply compensation if not matching the mix
     if (!isMatchMix) {
       console.debug(`Applying compensation factor: ${this.compensate}`);
       const compensatedSource = source.mul(this.compensate);
       source.dispose();
-
       console.debug('Demixing process completed.');
       return compensatedSource;
     } else {
