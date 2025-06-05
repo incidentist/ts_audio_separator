@@ -241,9 +241,10 @@ export class STFT {
     nFft: number,
     hopLength: number,
     window: tf.Tensor,
-    center: boolean = true
+    center: boolean = true,
+    originalLength?: number
   ): tf.Tensor {
-    console.debug(`ISTFT input shape: real=${realPart.shape}, imag=${imagPart.shape}`);
+    console.debug(`ISTFT input shape: real=${realPart.shape}, imag=${imagPart.shape}, originalLength=${originalLength}`);
 
     return tf.tidy(() => {
       const channelCount = realPart.shape[0];
@@ -315,20 +316,41 @@ export class STFT {
         let result = normalized;
         if (center) {
           const padSize = Math.floor(nFft / 2);
-          const validLength = outputLength - (2 * padSize);
-          result = normalized.slice([padSize], [validLength]);
-          console.log(`Removed center padding: ${outputLength} -> ${result.shape[0]} samples`);
-          // Old version
-          // if (outputLength > 2 * padSize) {
-          //   result = normalized.slice([padSize], [outputLength - 2 * padSize]);
-          // }
+          const contentAfterCenterRemovalLength = outputLength - (2 * padSize);
+          if (normalized.shape[0] >= padSize + contentAfterCenterRemovalLength && contentAfterCenterRemovalLength >=0) {
+            result = normalized.slice([padSize], [contentAfterCenterRemovalLength]);
+            console.log(`ISTFT: Removed center padding. OLA output: ${outputLength}, Content length: ${contentAfterCenterRemovalLength}. Result shape: ${result.shape[0]}`);
+          } else {
+            const actualSliceLength = Math.max(0, contentAfterCenterRemovalLength);
+            if (normalized.shape[0] >= padSize + actualSliceLength) {
+                 result = normalized.slice([padSize], [actualSliceLength]);
+                 console.warn(`ISTFT: Problematic slice for center padding. OLA: ${outputLength}, pad: ${padSize}, calc content: ${contentAfterCenterRemovalLength}. Sliced ${actualSliceLength}.`);
+            } else {
+                 result = tf.tensor1d([]); // Ensure it's 1D for subsequent operations
+                 console.error(`ISTFT: Normalized tensor too short for center slice. Shape: ${normalized.shape[0]}, pad: ${padSize}, calc content: ${contentAfterCenterRemovalLength}`);
+            }
+          }
         }
+        // Else result is 'normalized'
 
+        // Adjust to originalLength if provided
+        if (originalLength !== undefined) {
+          const currentLength = result.shape[0];
+          if (currentLength > originalLength) {
+            result = result.slice([0], [originalLength]);
+            console.log(`ISTFT: Truncated from ${currentLength} to originalLength ${originalLength}.`);
+          } else if (currentLength < originalLength) {
+            result = tf.pad(result, [[0, originalLength - currentLength]]);
+            console.log(`ISTFT: Padded from ${currentLength} to originalLength ${originalLength}.`);
+          }
+        }
         results.push(result);
       }
 
       // Stack channels
-      return tf.stack(results);
+      const stackedResults = tf.stack(results);
+      console.log(`ISTFT: Final stacked results shape: ${stackedResults.shape}, originalLength provided: ${originalLength}`);
+      return stackedResults;
     });
   }
 
@@ -377,7 +399,7 @@ export class STFT {
     return { real: realPart, imag: imagPart };
   }
 
-  inverse(inputTensor: tf.Tensor): tf.Tensor {
+  inverse(inputTensor: tf.Tensor, originalLength?: number): tf.Tensor {
     console.debug(`STFT inverse input tensor shape: ${inputTensor.shape}`);
 
     // Calculate dimensions
@@ -407,18 +429,25 @@ export class STFT {
       this.nFft,
       this.hopLength,
       this.hannWindow,
-      true  // center=true to match PyTorch
+      true, // center=true to match PyTorch
+      originalLength // Pass originalLength here
     );
-    const batchResult = result.expandDims(0);
-    console.debug(`ISTFT result shape: ${batchResult.shape}`);
+    const istftResult = result.expandDims(0); // result from istft should now respect originalLength
+    console.debug(`ISTFT direct result expanded shape: ${istftResult.shape}`);
+
+    // The istft method should now handle originalLength.
+    // The truncation/padding logic here becomes redundant if originalLength was passed to istft.
+    // However, if originalLength was NOT passed to istft (e.g. STFT.inverse called with 1 arg),
+    // this block could still be relevant, but originalLength would be undefined.
+    // For this specific subtask, we assume originalLength is always passed from inverse to istft.
 
     // Clean up
     paddedTensor.dispose();
     real.dispose();
     imag.dispose();
-    result.dispose();
+    result.dispose(); // this is the tensor from istft *before* expandDims
 
-    return batchResult;
+    return istftResult;
   }
 
   private calculateInverseDimensions(inputTensor: tf.Tensor): [number[], number, number, number, number] {

@@ -53,7 +53,7 @@ describe('STFT', () => {
         console.log('Actual frames:', spectrum.shape[3]);
 
         // Inverse pass
-        const reconstructed = stft.inverse(spectrum);
+        const reconstructed = stft.inverse(spectrum, input.shape[input.shape.length - 1]);
         console.log('Reconstructed shape:', reconstructed.shape);
         console.log('Expected shape:', input.shape);
 
