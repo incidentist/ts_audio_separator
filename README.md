@@ -2,6 +2,10 @@
 
 A TypeScript library for running MDX audio demixing models in the browser using ONNX WebAssembly runtime.
 
+Test using:
+
+npx playwright test tests/mdx-separator.spec.ts
+
 ## Structure
 
 This project is structured similarly to the python-audio-separator repository, but implemented in TypeScript for browser usage.

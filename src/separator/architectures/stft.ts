@@ -63,14 +63,14 @@ export class STFT {
     this.debugTensorStats(stftOutput, "stft: torchStyleStft output");
 
     // Rearrange the dimensions just like in the Python code
-    // From: [batch*channels, freq_bins, time_frames, 2] 
-    // To: [batch*channels, 2, freq_bins, time_frames]
+    // From: [batch*channels, freq_bins, time_frames, real/imag] 
+    // To: [batch*channels, real/imag, freq_bins, time_frames]
     const permutedStftOutput = tf.transpose(stftOutput, [0, 3, 1, 2]);
     this.debugTensorStats(permutedStftOutput, "stft: permutedStftOutput");
 
     // Now reshape to restore original batch and channel dimensions
-    // From: [batch*channels, 2, freq_bins, time_frames]
-    // First: [...batch_dimensions, channel_dim, 2, freq_bins, time_frames]
+    // From: [batch*channels, real/imag, freq_bins, time_frames]
+    // First: [...batch_dimensions, channel_dim, real/imag, freq_bins, time_frames]
     // Then: [...batch_dimensions, channel_dim*2, freq_bins, time_frames]
 
     // Calculate the new shape dimensions
@@ -112,7 +112,7 @@ export class STFT {
     hopLength: number,
     window: tf.Tensor,
     center: boolean = true
-  ): tf.Tensor {
+  ): tf.Tensor { // [batch size, freq_bins, time_frames, real/imag]
     console.debug(`Torch-style STFT input shape: ${tensor.shape}`);
 
     return tf.tidy(() => {
@@ -315,9 +315,13 @@ export class STFT {
         let result = normalized;
         if (center) {
           const padSize = Math.floor(nFft / 2);
-          if (outputLength > 2 * padSize) {
-            result = normalized.slice([padSize], [outputLength - 2 * padSize]);
-          }
+          const validLength = outputLength - (2 * padSize);
+          result = normalized.slice([padSize], [validLength]);
+          console.log(`Removed center padding: ${outputLength} -> ${result.shape[0]} samples`);
+          // Old version
+          // if (outputLength > 2 * padSize) {
+          //   result = normalized.slice([padSize], [outputLength - 2 * padSize]);
+          // }
         }
 
         results.push(result);
