@@ -16,9 +16,10 @@ describe('STFT', () => {
 
     it('should reconstruct signal through forward and inverse transform', async () => {
         console.log("starting test");
+        
         // Create a test signal - mix of sinusoids
         const sampleRate = 44100;
-        const duration = 0.1; // 1 second
+        const duration = 0.1; // 0.1 second
         const numSamples = Math.floor(sampleRate * duration);
         const t = tf.linspace(0, duration, numSamples);
 
@@ -49,6 +50,7 @@ describe('STFT', () => {
         // Calculate expected number of frames
         const paddedLength = numSamples + 2 * Math.floor(nFft / 2); // center padding
         const expectedFrames = Math.floor((paddedLength - nFft) / hopLength) + 1;
+        console.log(`Input length: ${numSamples}, Padded length: ${paddedLength}`);
         console.log('Expected frames:', expectedFrames);
         console.log('Actual frames:', spectrum.shape[3]);
 
