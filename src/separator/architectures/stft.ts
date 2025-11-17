@@ -260,11 +260,11 @@ export class STFT {
         const realT = tf.transpose(channelReal);
         const imagT = tf.transpose(channelImag);
 
-        // Apply conjugate for IFFT (negate imaginary part)
-        const conjImagT = tf.neg(imagT);
-
         // Create complex tensor for IRFFT
-        const complexTensor = tf.complex(realT, conjImagT);
+        // Note: Do NOT apply conjugate here. The IRFFT expects the original
+        // FFT coefficients, not the conjugate. Taking the conjugate would
+        // cause signal attenuation and phase distortion.
+        const complexTensor = tf.complex(realT, imagT);
 
         // Apply IRFFT to get time-domain frames
         const frames = tf.spectral.irfft(complexTensor);
